@@ -1,0 +1,8 @@
+{
+  "admin_import_url": "",
+  "prefer_core_csv": true,
+  "cleanup_tmp_on_success": true,
+  "save_uploaded_art_csv_to_www": false,
+  "hub_port": 8765,
+  "preview_html_max_age_days": 14
+}

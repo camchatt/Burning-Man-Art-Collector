@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Burning Man → Artelier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="briefing">
+      <div class="briefing-copy">
+        <p class="eyebrow">Burning Man Art Aggregator</p>
+        <h1>Build an Artelier upload from one Burning Man year</h1>
+        <p class="lede" id="about">
+          Start from a PlayaEvents ART spreadsheet. Match each project to the History Archive
+          for hero photos and proof links, attach contributor names when we can, then download
+          the Artelier CSV.
+        </p>
+      </div>
+      <div class="briefing-actions">
+        <p class="year-pill" id="year-pill">Year —</p>
+        <p class="disk-pill" id="disk-pill">Disk —</p>
+        <label class="sort-label header-year">
+          Open a year already prepared
+          <select id="year-switch"></select>
+        </label>
+        <button type="button" class="secondary-btn" id="switch-year">Open year</button>
+      </div>
+    </header>
+
+    <nav class="wizard-steps" aria-label="Wizard steps">
+      <button type="button" class="wizard-tab active" data-step="1">1. Choose year file</button>
+      <button type="button" class="wizard-tab" data-step="2">2. Match &amp; build</button>
+      <button type="button" class="wizard-tab" data-step="3">3. Review &amp; download</button>
+    </nav>
+
+    <section class="wizard-panel" id="step-1" data-step-panel="1">
+      <h2>Choose the PlayaEvents ART file for one year</h2>
+      <p class="ops-help">
+        Use a file named like <code>PlayaEvents-2022_ART.csv</code> from What When Where /
+        PlayaEvents. It must have columns <strong>Title</strong>, <strong>Description</strong>,
+        <strong>Link</strong>, and <strong>UID</strong> (plus Type, Camp, Where, Extra).
+      </p>
+      <p class="ops-help">
+        Do <strong>not</strong> upload an Artelier export (columns like <code>project_title</code>
+        or <code>bm_uid</code>) — that is the <em>output</em> of this tool, not the input.
+        Your upload is used only for this run; files already in
+        <code>What When Where Files</code> are never overwritten.
+      </p>
+      <div class="ops-row">
+        <label class="file-btn secondary">
+          Choose PlayaEvents ART CSV
+          <input type="file" id="ingest-file" accept=".csv,text/csv" hidden />
+        </label>
+        <p class="year-pill" id="detected-year-pill">Year not detected</p>
+      </div>
+      <p class="file-name" id="ingest-file-name">No file selected</p>
+      <p class="ops-status" id="csv-inspect-message"></p>
+      <button type="button" class="primary-btn" id="goto-prepare" disabled>Continue to match &amp; build</button>
+    </section>
+
+    <section class="wizard-panel" id="step-2" data-step-panel="2" hidden>
+      <h2>Match to the History Archive and build the Artelier CSV</h2>
+      <p class="ops-help" id="prepare-summary">Choose a PlayaEvents file in step 1 first.</p>
+      <ul class="prepare-list">
+        <li>
+          <strong>History Archive match</strong> — look up each project by UID/title; pull
+          hero image URLs and proof page links (needs network; can take a few minutes).
+        </li>
+        <li>
+          <strong>Names</strong> — by default, reuse local credits and any saved identity cache
+          (no open web search). Heroes do <em>not</em> come from the spreadsheet; they come from the archive.
+        </li>
+        <li>
+          <strong>Build preview</strong> — write the year folder under
+          <code>data/bm_ingest/&lt;year&gt;/</code> and show the gallery below.
+        </li>
+      </ul>
+      <label class="checkline">
+        <input type="checkbox" id="run-identity-online" />
+        Also search the web for unclear artist / Burner names (slow; limited batch — leave off unless you need it)
+      </label>
+      <div class="overwrite-warn" id="overwrite-warn" hidden>
+        <p>
+          <strong>This year already has Aggregator outputs.</strong>
+          Running again replaces CSVs and preview under <code>data/bm_ingest</code> and
+          verification caches — not your PlayaEvents template on disk.
+        </p>
+        <label class="checkline">
+          <input type="checkbox" id="confirm-overwrite" />
+          Yes, rebuild this year’s Aggregator outputs
+        </label>
+      </div>
+      <button type="button" class="primary-btn" id="run-prepare" disabled>Match archive &amp; build preview</button>
+      <ol class="process-steps" id="prepare-steps" aria-live="polite"></ol>
+      <p class="ops-status" id="prepare-status"></p>
+    </section>
+
+    <section class="wizard-panel" id="step-3" data-step-panel="3" hidden>
+      <h2>Review projects, then download for Artelier</h2>
+      <p class="ops-help">
+        The gallery below is what you can download. Pick a filter (Needs review, Has hero photo, etc.)
+        or search — the Artelier CSV export includes only the projects currently shown.
+      </p>
+      <div class="ops-row">
+        <button type="button" class="primary-btn" id="download-upload" disabled>Download Artelier CSV</button>
+        <button type="button" class="secondary-btn" id="run-deploy" disabled>Copy into deploy folder</button>
+      </div>
+      <p class="ops-status" id="export-status"></p>
+      <p class="ops-status" id="deploy-status"></p>
+      <details class="more-options">
+        <summary>Advanced: validate, core-only slice, cleanup</summary>
+        <div class="ops-row">
+          <button type="button" class="secondary-btn" id="run-validate">Validate upload-ready rows only</button>
+          <button type="button" class="secondary-btn" id="download-core" disabled>Download Artelier core columns only</button>
+          <button type="button" class="secondary-btn" id="open-admin" disabled>Open Artelier import URL</button>
+          <button type="button" class="secondary-btn" id="run-cleanup">Delete temp upload folders</button>
+        </div>
+        <label class="checkline">
+          <input type="checkbox" id="export-anyway" />
+          Allow deploy copy even if validation fails
+        </label>
+        <pre class="ops-log" id="validate-log">Validation not run yet.</pre>
+        <p class="ops-status" id="cleanup-status"></p>
+        <label class="file-btn secondary">
+          Load a saved aggregator_view JSON…
+          <input type="file" id="file-input" accept="application/json,.json" hidden />
+        </label>
+      </details>
+    </section>
+
+    <section class="checklist" id="checklist" aria-label="Year checklist"></section>
+
+    <section class="controls">
+      <input type="search" id="search" placeholder="Search title, contributor, camp, address…" />
+      <div class="filters" id="filters" role="tablist" aria-label="Filters"></div>
+      <label class="sort-label">
+        Sort
+        <select id="sort">
+          <option value="priority">Review priority</option>
+          <option value="title">Title</option>
+          <option value="contributor">Contributor</option>
+        </select>
+      </label>
+      <p class="result-count" id="result-count"></p>
+    </section>
+
+    <div class="workspace">
+      <main class="gallery" id="gallery">
+        <div class="loading">
+          No year loaded yet. Choose a PlayaEvents ART file and run Match &amp; build,
+          or use “Open year” above for a year you already prepared.
+        </div>
+      </main>
+      <aside class="detail" id="detail" hidden>
+        <button type="button" class="close-detail" id="close-detail" aria-label="Close detail">×</button>
+        <div id="detail-body"></div>
+      </aside>
+    </div>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

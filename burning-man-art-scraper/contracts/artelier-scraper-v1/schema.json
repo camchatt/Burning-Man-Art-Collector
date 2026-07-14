@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:artelier:schema:artelier_scraper_csv_v1",
+  "title": "Artelier Scraper CSV v1 row",
+  "description": "One normalized row in the artelier_scraper_csv_v1 exchange contract. CSV cells are strings and unknown namespaced fields are preserved.",
+  "type": "object",
+  "required": ["contract_version"],
+  "additionalProperties": {
+    "type": "string"
+  },
+  "anyOf": [
+    {
+      "required": ["project_title"],
+      "properties": { "project_title": { "minLength": 1 } }
+    },
+    {
+      "required": ["artist_name"],
+      "properties": { "artist_name": { "minLength": 1 } }
+    },
+    {
+      "required": ["organization_name"],
+      "properties": { "organization_name": { "minLength": 1 } }
+    },
+    {
+      "required": ["proof_external_url"],
+      "properties": { "proof_external_url": { "minLength": 1 } }
+    }
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "artelier_scraper_csv_v1"
+    },
+    "source_name": { "type": "string" },
+    "source_namespace": { "type": "string" },
+    "source_record_id": { "type": "string" },
+    "source_record_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "contributor_kind": {
+      "enum": ["person", "organization", "collective", "unknown"]
+    },
+    "artist_name": { "type": "string" },
+    "artist_alias": { "type": "string" },
+    "artist_website": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "organization_name": { "type": "string" },
+    "project_title": { "type": "string" },
+    "proof_title": { "type": "string" },
+    "proof_external_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "proof_excerpt": { "type": "string" },
+    "source_granularity": {
+      "enum": [
+        "Individual project page",
+        "Portfolio index page",
+        "Gallery caption",
+        "Bio/CV reference",
+        "Press article",
+        "Image-only inference"
+      ]
+    },
+    "project_type": { "type": "string" },
+    "tags": {
+      "type": "string",
+      "description": "Pipe-delimited values."
+    },
+    "materials": {
+      "type": "string",
+      "description": "Pipe-delimited values."
+    },
+    "fabrication_methods": {
+      "type": "string",
+      "description": "Pipe-delimited values."
+    },
+    "context_tags": {
+      "type": "string",
+      "description": "Pipe-delimited values."
+    },
+    "what_they_did": { "type": "string" },
+    "why_it_matters": { "type": "string" },
+    "contributor_role": { "type": "string" },
+    "collaboration_status": { "type": "string" },
+    "collaborators": { "type": "string" },
+    "location": { "type": "string" },
+    "year": {
+      "type": "string",
+      "pattern": "^$|^[0-9]{4}$"
+    },
+    "dimensions": { "type": "string" },
+    "client_or_commissioner": { "type": "string" },
+    "institution": { "type": "string" },
+    "image_urls": {
+      "type": "string",
+      "description": "A single URL, pipe-delimited URLs, comma-delimited URLs, or a JSON array encoded in a CSV cell."
+    },
+    "proof_confidence": {
+      "enum": ["", "high", "medium", "low"]
+    },
+    "classification_confidence": {
+      "enum": ["", "high", "medium", "low"]
+    },
+    "description_confidence": {
+      "enum": ["", "high", "medium", "low"]
+    },
+    "classification_source": {
+      "enum": ["", "manual", "scraper", "ai", "imported"]
+    },
+    "review_status": {
+      "enum": [
+        "",
+        "Needs review",
+        "Approved",
+        "Rejected",
+        "Needs better source",
+        "Needs permission",
+        "Duplicate"
+      ]
+    },
+    "permission_status": {
+      "enum": [
+        "",
+        "Needs permission",
+        "Permission granted",
+        "Permission not required",
+        "Do not publish",
+        "Unknown"
+      ]
+    },
+    "import_notes": { "type": "string" }
+  },
+  "x-csv-column-order": [
+    "contract_version",
+    "source_name",
+    "source_namespace",
+    "source_record_id",
+    "source_record_url",
+    "contributor_kind",
+    "artist_name",
+    "artist_alias",
+    "artist_website",
+    "organization_name",
+    "project_title",
+    "proof_title",
+    "proof_external_url",
+    "proof_excerpt",
+    "source_granularity",
+    "project_type",
+    "tags",
+    "materials",
+    "fabrication_methods",
+    "context_tags",
+    "what_they_did",
+    "why_it_matters",
+    "contributor_role",
+    "collaboration_status",
+    "collaborators",
+    "location",
+    "year",
+    "dimensions",
+    "client_or_commissioner",
+    "institution",
+    "image_urls",
+    "proof_confidence",
+    "classification_confidence",
+    "description_confidence",
+    "classification_source",
+    "review_status",
+    "permission_status",
+    "import_notes"
+  ]
+}

@@ -36,3 +36,12 @@ data/previews/raw_html/**
 !data/previews/raw_html/.gitkeep
 
 data/exports/
+
+data/verification/
+data/uploads/
+data/deploy/
+data/bm_ingest/
+viewer/aggregator/data/
+*.zip
+outputs.zip.local
+

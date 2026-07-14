@@ -26,3 +26,10 @@ burning-man-art-scraper/data/previews/*
 burning-man-art-scraper/data/previews/raw_html/**
 !burning-man-art-scraper/data/previews/raw_html/.gitkeep
 burning-man-art-scraper/data/exports/
+burning-man-art-scraper/data/uploads/
+burning-man-art-scraper/data/deploy/
+burning-man-art-scraper/data/bm_ingest/
+burning-man-art-scraper/viewer/aggregator/data/
+*.zip
+outputs.zip.local
+

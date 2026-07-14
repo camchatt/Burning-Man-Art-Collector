@@ -143,38 +143,64 @@ class SearXNGSearchProvider:
 class DuckDuckGoSearchProvider:
     name = "duckduckgo"
 
-    def __init__(self, min_delay_seconds: float = 3.0):
+    def __init__(self, min_delay_seconds: float = 1.5):
         self.min_delay_seconds = min_delay_seconds
         self.last_request_at = 0.0
 
     @staticmethod
     def available() -> bool:
-        try:
-            import duckduckgo_search  # noqa: F401
-        except Exception:
-            return False
-        return True
+        for module_name in ("ddgs", "duckduckgo_search"):
+            try:
+                __import__(module_name)
+                return True
+            except Exception:
+                continue
+        return False
 
-    def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+    @staticmethod
+    def _load_ddgs():
+        try:
+            from ddgs import DDGS
+
+            return DDGS, "ddgs"
+        except Exception:
+            pass
         try:
             from duckduckgo_search import DDGS
+
+            return DDGS, "duckduckgo_search"
         except Exception as exc:
             raise RuntimeError("DuckDuckGo optional dependency is not installed.") from exc
+
+    def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+        ddgs_cls, source_name = self._load_ddgs()
         elapsed = time.time() - self.last_request_at
         if elapsed < self.min_delay_seconds:
             time.sleep(self.min_delay_seconds - elapsed)
         results: list[SearchResult] = []
-        with DDGS() as ddgs:
-            for item in ddgs.text(query, max_results=limit):
+        client = ddgs_cls()
+        try:
+            for item in client.text(query, max_results=limit):
                 results.append(
                     SearchResult(
                         title=clean_text(str(item.get("title") or "")),
                         url=str(item.get("href") or item.get("url") or ""),
                         snippet=strip_html(str(item.get("body") or "")),
                         provider=self.name,
-                        engine_metadata={"source": "duckduckgo_search"},
+                        engine_metadata={"source": source_name},
                     )
                 )
+        except Exception as exc:
+            # Treat provider outages as empty results so batch jobs can continue.
+            self.last_request_at = time.time()
+            raise RuntimeError(f"DuckDuckGo search failed: {exc}") from exc
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
         self.last_request_at = time.time()
         return [result for result in results if result.url][:limit]
 

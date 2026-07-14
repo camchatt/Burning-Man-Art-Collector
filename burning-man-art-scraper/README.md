@@ -103,11 +103,113 @@ Phase 8 writes:
 - `data/exports/burning_man/<year>/consolidated/burning_man_<year>_all_completed.csv`
 - `data/exports/burning_man/<year>/consolidated/burning_man_<year>_all_completed.json`
 
+## Resolve artist identities
+
+After verification, resolve archive credits into legal names / collectives and
+separate playa names when the pattern is reliable (`aka` / `a.k.a.` /
+clear parenthetical nicknames).
+
+```bash
+python run_identity.py --year 2022
+```
+
+Outputs in `data/verification/<year>/`:
+
+- `identity_report_<year>.csv` (includes `legal_name` and `playa_name` columns)
+- `identity_report_<year>.json`
+- `identity_summary_<year>.json`
+
+Use `--skip-search` to classify credits only without web lookup.
+
+## Burning Man Artelier ingest (upload-ready CSV)
+
+Builds a `burningman.artelier` upload CSV from the WWW ART spreadsheet plus
+cached verification/archive data. **Default run makes no network requests.**
+
+```bash
+python run_bm_ingest.py --year 2022
+```
+
+Optional hero page probing only when explicitly requested:
+
+```bash
+python run_bm_ingest.py --year 2022 --fetch-missing-heroes
+```
+
+Schema and rules:
+
+- `config/burning_man_schema.json`
+- `docs/burning_man_ingestion_rules.md`
+
+Outputs in `data/bm_ingest/<year>/`:
+
+- `artelier_bm_upload_<year>.csv` (Artelier core + BM extensions)
+- `artelier_core_only_<year>.csv`
+- `review_queue_<year>.csv`
+- `ingest_summary_<year>.json`
+- `aggregator_view_<year>.json` (pre-upload preview data)
+
+### Aggregator hub (recommended daily workflow)
+
+The hub is the main UI: preview, upload a new year ART CSV, validate Artelier
+format, and prepare a deploy package.
+
+```bash
+python run_aggregator_hub.py
+```
+
+Opens [http://127.0.0.1:8765/](http://127.0.0.1:8765/) (also auto-starts on
+folder open in Cursor when automatic tasks are allowed).
+
+**In the UI**
+
+1. **Process another year** — upload `PlayaEvents-YYYY_ART.csv`, run offline ingest.
+2. **Preview** — filter Needs attention; check credits, hero, proof, playa address.
+3. **Validate CSV** — Artelier 36-column core schema check.
+4. **Prepare deploy package** — writes `data/deploy/<year>/artelier_core_only_<year>.csv`.
+5. Upload that CSV in Artelier admin (set `admin_import_url` in
+   `config/artelier_deploy.yaml` to enable **Open Artelier import**).
+
+Full walkthrough: [`viewer/aggregator/README.md`](viewer/aggregator/README.md)  
+Repo overview: [`../START_HERE.md`](../START_HERE.md) and [`../README.md`](../README.md)
+
+Cleanup temps without starting the server:
+
+```bash
+python run_aggregator_hub.py --cleanup
+```
+
 ## Test
 
 ```bash
 python -m unittest discover -s tests
 ```
+
+## Verify projects against the official archive
+
+The verification pipeline uses `history.burningman.org` as the primary source,
+cross-checks optional What/When/Where CSV references, validates image URLs, and
+captures attribution metadata for Artelier.
+
+```bash
+python run_verify.py --year 2022
+```
+
+Useful options:
+
+- `--scope export|www|archive|all`
+- `--skip-image-validation` for faster index-only runs
+- `--check-legacy-links` to test old PlayaEvents URLs
+
+Outputs are written to `data/verification/<year>/`:
+
+- `verification_report_<year>.csv`
+- `verification_report_<year>.json`
+- `image_manifest_<year>.json`
+- `archive_index_<year>.json`
+- `verification_summary_<year>.json`
+
+You can also run verification from the interactive scraper menu (option 5).
 
 ## Configuration
 

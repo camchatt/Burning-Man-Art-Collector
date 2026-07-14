@@ -13,6 +13,7 @@ from burning_man_scraper.artelier_schema import (
 from burning_man_scraper.fetcher import BoundedFetcher
 from burning_man_scraper.enrichment.cli import run_enrichment_workflow
 from burning_man_scraper.exporter import export_completed_batch, source_slug
+from burning_man_scraper.verification.cli import default_export_path, default_www_dir, run_verification
 from burning_man_scraper.inspection import PageInspection, inspect_html, is_installation_detail_url
 from burning_man_scraper.preview import (
     configuration_hash,
@@ -57,7 +58,8 @@ MAIN_MENU_OPTIONS = {
     "2": "enrich",
     "3": "resume_enrichment",
     "4": "view_export_history",
-    "5": "exit",
+    "5": "verify",
+    "6": "exit",
 }
 
 
@@ -69,7 +71,8 @@ def prompt_for_main_menu(
     output_func("2. Enrich an existing batch")
     output_func("3. Resume an enrichment batch")
     output_func("4. View export history")
-    output_func("5. Exit")
+    output_func("5. Verify projects against the official archive")
+    output_func("6. Exit")
     output_func("")
 
     while True:
@@ -725,6 +728,8 @@ def run_interactive(
         )
     if menu_action == "view_export_history":
         return view_export_history(config.export_root_dir, output_func=output_func)
+    if menu_action == "verify":
+        return run_verify_workflow(config=config, input_func=input_func, output_func=output_func)
     if menu_action == "exit":
         output_func("Goodbye.")
         return 0
@@ -736,6 +741,39 @@ def run_interactive(
         input_func=input_func,
         output_func=output_func,
         initial_entered_url=menu_action,
+    )
+
+
+def run_verify_workflow(
+    config: ScraperConfig,
+    input_func: InputFunc = input,
+    output_func: OutputFunc = print,
+) -> int:
+    project_root = Path(__file__).resolve().parents[2]
+    output_func("Enter archive year to verify (default 2022):")
+    year_text = input_func("> ").strip() or "2022"
+    try:
+        year = int(year_text)
+    except ValueError:
+        output_func("Invalid year.")
+        return 1
+
+    export_path = default_export_path(project_root, year)
+    if not export_path.exists():
+        output_func(f"No consolidated export found at {export_path}.")
+        output_func("Verification can still run with --scope www or archive via run_verify.py.")
+        return 1
+
+    return run_verification(
+        config=config,
+        year=year,
+        www_dir=default_www_dir(project_root),
+        export_path=export_path,
+        output_dir=project_root / "data" / "verification" / str(year),
+        scope="export",
+        validate_images=True,
+        check_legacy_links=False,
+        output_func=output_func,
     )
 
 

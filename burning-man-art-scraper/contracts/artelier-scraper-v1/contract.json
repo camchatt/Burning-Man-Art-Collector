@@ -1,0 +1,11 @@
+{
+  "contract": "artelier_scraper_csv_v1",
+  "schema_sha256": "6f41010deeebe9dd21f7f73bd00362fb5d0a61a8d240e029c3d3ddedd7bf576a",
+  "source_of_truth": "Artelier owns this contract. Collector copies are for local validation.",
+  "artifacts": [
+    "schema.json",
+    "README.md",
+    "sample.csv",
+    "artelierScraperCsvV1.ts"
+  ]
+}

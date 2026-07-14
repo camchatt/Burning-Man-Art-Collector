@@ -1,0 +1,64 @@
+{
+  "schema_version": "burning-man-artelier-ingest-v1",
+  "description": "Unified upload schema for burningman.artelier: Artelier core columns first, then Burning Man extensions.",
+  "artelier_core_schema_version": "artelier-import-template-2026-06-17-v1",
+  "artelier_core_schema_path": "config/artelier_import_schema.yaml",
+  "output_column_groups": {
+    "artelier_core": "Exact 36-column Artelier Registry import contract, preserved in order.",
+    "burning_man_extensions": "Appended after core for burningman.artelier. Core-only CSV omits these."
+  },
+  "burning_man_extensions": [
+    {"name": "bm_uid", "order": 1, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "WWW or archive installation UID."},
+    {"name": "bm_year", "order": 2, "required": false, "data_type": "integer", "null_behavior": "empty_string", "default_value": "", "description": "Burning Man event year (also mirrors project_year)."},
+    {"name": "bm_event_name", "order": 3, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "Burning Man", "description": "Event label."},
+    {"name": "playa_address", "order": 4, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "WWW Where text (playa location address)."},
+    {"name": "playa_latitude", "order": 5, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Optional future GPS; empty when unknown."},
+    {"name": "playa_longitude", "order": 6, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Optional future GPS; empty when unknown."},
+    {"name": "honorarium_status", "order": 7, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Honorarium status when known from collector scrape."},
+    {"name": "theme_camp", "order": 8, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "WWW Camp column."},
+    {"name": "installation_type", "order": 9, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "WWW Type column."},
+    {"name": "source_artist_credit", "order": 10, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Untouched original artist credit string from source."},
+    {"name": "contributor_display_name", "order": 11, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Normalized primary contributor display name."},
+    {"name": "additional_contributor_credits", "order": 12, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Secondary artists/collaborators/collectives as preserved source text."},
+    {"name": "contributor_kind", "order": 13, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "unknown", "validation_rules": ["one_of:individual,organization,collective,multiple,studio,theme_camp,unknown"], "description": "Contributor classification (portal may collapse to person/org/multiple/unknown)."},
+    {"name": "contributor_first_name", "order": 14, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "First name when split is clear."},
+    {"name": "contributor_last_name", "order": 15, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Last name when split is clear."},
+    {"name": "playa_name", "order": 16, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Alt / Burner name when identified (never the primary legal/canonical name)."},
+    {"name": "playa_name_confidence", "order": 17, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "none", "validation_rules": ["one_of:high,medium,low,none"], "description": "Confidence for playa_name separation."},
+    {"name": "bm_hero_image_source_url", "order": 18, "required": false, "data_type": "url", "null_behavior": "empty_string", "default_value": "", "description": "BM-side copy of the resolved hero URL for provenance. Canonical Artelier display field remains core hero_image_url (no duplicate header)."},
+    {"name": "hero_image_source_page", "order": 19, "required": false, "data_type": "url", "null_behavior": "empty_string", "default_value": "", "description": "Page URL where the hero image was found."},
+    {"name": "hero_image_attribution", "order": 20, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Attribution/credit text when available."},
+    {"name": "hero_image_confidence", "order": 21, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "validation_rules": ["one_of:high,medium,low,needs_review,"], "description": "Hero image confidence or review status."},
+    {"name": "review_flags", "order": 22, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Pipe-delimited machine-readable issue codes only."},
+    {"name": "source_provenance", "order": 23, "required": false, "data_type": "string", "null_behavior": "empty_string", "default_value": "", "description": "Pipe-delimited list of datasets that contributed fields."}
+  ],
+  "review_flags_allowed": [
+    "duplicate_candidate",
+    "name_split_uncertain",
+    "playa_name_uncertain",
+    "contributor_kind_uncertain",
+    "identity_needs_review",
+    "hero_missing",
+    "hero_needs_review",
+    "missing_archive_cache",
+    "honorarium_unknown"
+  ],
+  "portal_preview_labels": {
+    "person_or_org": "Person or Organization",
+    "name": "Name",
+    "alt_burner_name": "Alt / Burner Name",
+    "additional_contributor_credits": "Additional Credits"
+  },
+  "processing_modes": {
+    "fast_upload": "Default portal/ingest path: cache-first, local identity fallback, zero open-web identity searches.",
+    "deep_research": "Optional separate run_identity.py path with explicit network search; never started by upload."
+  },
+  "join_keys": {
+    "primary": "bm_uid",
+    "fallback": ["normalized_title", "bm_year"]
+  },
+  "defaults": {
+    "network_requests": false,
+    "fetch_missing_heroes_flag": "--fetch-missing-heroes"
+  }
+}
