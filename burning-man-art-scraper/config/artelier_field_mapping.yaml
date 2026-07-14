@@ -1,0 +1,33 @@
+{
+  "schema_version": "artelier-field-mapping-2026-06-17-v1",
+  "mappings": [
+    {"scraper_source_field": "title", "artelier_destination_field": "project_title", "transformation": "copy", "required": true, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "title", "artelier_destination_field": "project_slug", "transformation": "slugify", "required": true, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "installation_type", "artelier_destination_field": "project_type", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "year", "artelier_destination_field": "project_year", "transformation": "integer_string", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_invalid"},
+    {"scraper_source_field": "artist_location", "artelier_destination_field": "project_location", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "description", "artelier_destination_field": "project_summary", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "project_visibility", "transformation": "default:private", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "materials", "artelier_destination_field": "project_materials", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "extraction_confidence", "artelier_destination_field": "project_classification_confidence", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "primary_image_url", "artelier_destination_field": "hero_image_url", "transformation": "url_or_empty", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_invalid"},
+    {"scraper_source_field": "artist_display_text", "artelier_destination_field": "contributor_name", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "artist_display_text", "artelier_destination_field": "contributor_slug", "transformation": "slugify", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "role_title", "transformation": "default:Artist", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "website_url", "artelier_destination_field": "contributor_website", "transformation": "url_or_empty", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_invalid"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "contributor_visibility", "transformation": "default:private", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "artist_collective", "artelier_destination_field": "collaboration_status", "transformation": "collective_or_empty", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "title", "artelier_destination_field": "contribution_title", "transformation": "artist_contribution_title", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "description", "artelier_destination_field": "what_they_did", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "image_credit_text", "artelier_destination_field": "public_credit_language", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "verification_status", "transformation": "default:documented", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "approval_status", "transformation": "default:draft", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "contribution_visibility", "transformation": "default:private", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "title", "artelier_destination_field": "proof_title", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "proof_type", "transformation": "default:Installation detail page", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "canonical_source_url", "artelier_destination_field": "proof_external_url", "transformation": "url", "required": true, "null_behavior": "empty_string", "review_requirement": "review_if_missing"},
+    {"scraper_source_field": "description", "artelier_destination_field": "proof_description", "transformation": "copy", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "proof_visibility", "transformation": "default:private", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"},
+    {"scraper_source_field": "__default__", "artelier_destination_field": "permission_status", "transformation": "default:pending_permission", "required": false, "null_behavior": "empty_string", "review_requirement": "optional"}
+  ]
+}

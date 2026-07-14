@@ -1,0 +1,11 @@
+max_records_per_run: 100
+state_database_path: data/state/scraper_state.sqlite3
+preview_manifest_path: data/previews/source_manifest.json
+raw_html_dir: data/previews/raw_html
+export_root_dir: data/exports
+request_delay_seconds: 3
+request_timeout_seconds: 30
+max_retries: 3
+user_agent: BurningManArtArchiveScraper/0.3 (+standalone inspection; contact: local-user)
+artelier_import_schema_path: config/artelier_import_schema.yaml
+artelier_field_mapping_path: config/artelier_field_mapping.yaml
