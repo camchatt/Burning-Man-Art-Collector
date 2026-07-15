@@ -183,7 +183,7 @@ def run_prepare_pipeline(
         "summary": summary,
         "uploaded_art_path": str(art_path),
         "saved_www_path": "",
-        "viewer_reload": "./data/aggregator_view.json",
+        "viewer_reload": f"/api/view?year={year}",
         "paths": {key: str(value) for key, value in paths.items()},
         "steps": steps,
         "overwrote": existing,

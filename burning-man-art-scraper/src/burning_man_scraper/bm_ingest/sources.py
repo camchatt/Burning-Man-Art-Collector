@@ -165,6 +165,19 @@ def default_www_dir(project_root: Path) -> Path:
     return project_root.parent / "What When Where Files"
 
 
+def aggregator_previews_dir(project_root: Path) -> Path:
+    """Derived Aggregator gallery previews live next to WWW templates (not mixed into ART CSVs)."""
+    return default_www_dir(project_root) / "aggregator_previews"
+
+
+def aggregator_preview_path(project_root: Path, year: int) -> Path:
+    return aggregator_previews_dir(project_root) / f"aggregator_view_{year}.json"
+
+
+def bm_ingest_preview_path(project_root: Path, year: int) -> Path:
+    return project_root / "data" / "bm_ingest" / str(year) / f"aggregator_view_{year}.json"
+
+
 def default_verification_dir(project_root: Path, year: int) -> Path:
     return project_root / "data" / "verification" / str(year)
 

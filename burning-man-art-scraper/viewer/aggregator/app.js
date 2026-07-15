@@ -1,5 +1,9 @@
 const DEFAULT_DATA_URL = "./data/aggregator_view.json";
 
+function viewUrlForYear(year) {
+  return year ? `/api/view?year=${year}` : DEFAULT_DATA_URL;
+}
+
 const FILTERS = [
   { id: "all", label: "All projects" },
   { id: "attention", label: "Needs review" },
@@ -516,15 +520,42 @@ function runPrepare() {
     });
 }
 
-function loadDefault() {
-  fetch(DEFAULT_DATA_URL)
+function loadYearView(year) {
+  if (!year) {
+    renderGallery();
+    return Promise.resolve(null);
+  }
+  return fetch(viewUrlForYear(year))
     .then((res) => {
-      if (!res.ok) throw new Error("No preview loaded yet.");
+      if (!res.ok) throw new Error(`No preview for ${year}`);
       return res.json();
     })
     .then((data) => {
       setBundle(data);
       showStep(3);
+      return data;
+    });
+}
+
+function loadDefault() {
+  // Prefer hub status latest_year; fall back to static cache if hub is offline.
+  return refreshHubStatus()
+    .then((status) => {
+      const year = status?.latest_year;
+      if (year) {
+        const yearSwitch = document.getElementById("year-switch");
+        if (yearSwitch) yearSwitch.value = String(year);
+        return loadYearView(year);
+      }
+      return fetch(DEFAULT_DATA_URL)
+        .then((res) => {
+          if (!res.ok) throw new Error("No preview loaded yet.");
+          return res.json();
+        })
+        .then((data) => {
+          setBundle(data);
+          showStep(3);
+        });
     })
     .catch(() => {
       renderGallery();
@@ -543,6 +574,7 @@ function refreshHubStatus() {
     })
     .catch(() => {
       document.getElementById("disk-pill").textContent = "Hub offline — start run_aggregator_hub.py";
+      return null;
     });
 }
 
@@ -660,7 +692,10 @@ document.getElementById("switch-year").addEventListener("click", () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ year }),
   })
-    .then((result) => fetch(result.viewer_reload).then((res) => res.json()).then(setBundle).then(() => showStep(3)))
+    .then((result) => {
+      if (!result.ok) throw new Error(result.error || "Could not open year");
+      return loadYearView(result.year || year);
+    })
     .catch((err) => {
       document.getElementById("cleanup-status").textContent = err.message;
     });
@@ -696,4 +731,4 @@ document.getElementById("file-input").addEventListener("change", (event) => {
 
 showStep(1);
 loadDefault();
-refreshHubStatus();
+// refreshHubStatus runs inside loadDefault so the latest prepared year auto-opens.

@@ -120,6 +120,9 @@ class IngestIntegrationTests(unittest.TestCase):
             self.assertEqual(len(view["projects"]), 5)
             self.assertIn("needs_attention", view["projects"][0])
             self.assertTrue((Path(tmp) / "root" / "viewer" / "aggregator" / "data" / "aggregator_view.json").exists())
+            www_preview = Path(tmp) / "What When Where Files" / "aggregator_previews" / "aggregator_view_2022.json"
+            self.assertTrue(www_preview.exists())
+            self.assertTrue(paths["www_preview"].exists())
 
 
 class ViewBundleTests(unittest.TestCase):

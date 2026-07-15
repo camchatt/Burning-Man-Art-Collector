@@ -159,11 +159,75 @@ def _review_priority(flags: list[str], *, missing_required: bool, has_hero: bool
 
 
 def copy_view_to_viewer(view_path: Path, project_root: Path, year: int) -> Path:
+    """Publish year gallery preview next to WWW templates; keep a thin viewer cache."""
+    from burning_man_scraper.bm_ingest.sources import aggregator_preview_path, aggregator_previews_dir
+
+    previews_dir = aggregator_previews_dir(project_root)
+    previews_dir.mkdir(parents=True, exist_ok=True)
+    www_target = aggregator_preview_path(project_root, year)
+    shutil.copy2(view_path, www_target)
+
+    # Thin cache for static fallback; portal prefers /api/view.
     target_dir = project_root / "viewer" / "aggregator" / "data"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f"aggregator_view_{year}.json"
     shutil.copy2(view_path, target)
-    # Also keep a stable default name for the GUI's first fetch.
     default_target = target_dir / "aggregator_view.json"
     shutil.copy2(view_path, default_target)
-    return target
+    return www_target
+
+
+def ensure_www_preview(project_root: Path, year: int) -> Path | None:
+    """Return WWW preview path, migrating from bm_ingest when needed."""
+    from burning_man_scraper.bm_ingest.sources import (
+        aggregator_preview_path,
+        aggregator_previews_dir,
+        bm_ingest_preview_path,
+    )
+
+    www_path = aggregator_preview_path(project_root, year)
+    if www_path.exists():
+        return www_path
+    ingest_path = bm_ingest_preview_path(project_root, year)
+    if not ingest_path.exists():
+        return None
+    aggregator_previews_dir(project_root).mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ingest_path, www_path)
+    return www_path
+
+
+def resolve_preview_path(project_root: Path, year: int) -> Path | None:
+    """Prefer WWW aggregator_previews, then bm_ingest backup."""
+    path = ensure_www_preview(project_root, year)
+    if path is not None:
+        return path
+    from burning_man_scraper.bm_ingest.sources import bm_ingest_preview_path
+
+    ingest = bm_ingest_preview_path(project_root, year)
+    return ingest if ingest.exists() else None
+
+
+def list_prepared_years(project_root: Path) -> list[int]:
+    """Years with a gallery preview (WWW first, else bm_ingest), newest first."""
+    from burning_man_scraper.bm_ingest.sources import aggregator_previews_dir
+
+    years: set[int] = set()
+    previews = aggregator_previews_dir(project_root)
+    if previews.exists():
+        for path in previews.glob("aggregator_view_*.json"):
+            stem = path.stem  # aggregator_view_2016
+            suffix = stem.rsplit("_", 1)[-1]
+            if suffix.isdigit():
+                years.add(int(suffix))
+
+    ingest_root = project_root / "data" / "bm_ingest"
+    if ingest_root.exists():
+        for child in ingest_root.iterdir():
+            if child.is_dir() and child.name.isdigit():
+                year = int(child.name)
+                if (child / f"aggregator_view_{year}.json").exists() or any(child.glob("*.csv")):
+                    years.add(year)
+                    # Discoverability: migrate existing views into WWW when present.
+                    ensure_www_preview(project_root, year)
+
+    return sorted(years, reverse=True)

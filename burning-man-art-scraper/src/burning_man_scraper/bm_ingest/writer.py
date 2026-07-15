@@ -94,7 +94,7 @@ def write_ingest_outputs(
             "artelier_core_only": str(core_path),
             "review_queue": str(review_path),
             "aggregator_view": str(view_path),
-            "aggregator_view_viewer_copy": str(viewer_copy) if viewer_copy else "",
+            "aggregator_view_www_preview": str(viewer_copy) if viewer_copy else "",
         },
     }
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -107,6 +107,7 @@ def write_ingest_outputs(
         "view": view_path,
     }
     if viewer_copy is not None:
+        paths["www_preview"] = viewer_copy
         paths["viewer_view"] = viewer_copy
     return paths
 

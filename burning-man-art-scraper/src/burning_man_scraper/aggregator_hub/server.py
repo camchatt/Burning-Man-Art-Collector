@@ -21,6 +21,7 @@ from burning_man_scraper.aggregator_hub.services import (
 )
 from burning_man_scraper.bm_ingest.merge import run_ingest
 from burning_man_scraper.bm_ingest.sources import cache_inventory
+from burning_man_scraper.bm_ingest.view_bundle import list_prepared_years, resolve_preview_path
 from burning_man_scraper.config import load_config
 from burning_man_scraper.verification.www_loader import (
     ArtCsvYearMismatchError,
@@ -48,6 +49,21 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/years":
             self._json({"years": self._list_years()})
+            return
+        if parsed.path == "/api/view":
+            qs = parse_qs(parsed.query)
+            year = int((qs.get("year") or ["0"])[0])
+            path = resolve_preview_path(self.project_root, year) if year else None
+            if path is None:
+                self._json({"ok": False, "error": f"No aggregator view for {year}"}, status=404)
+                return
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
             return
         if parsed.path in {"/api/download-upload", "/api/download-core"}:
             qs = parse_qs(parsed.query)
@@ -128,7 +144,8 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
             "year_summaries": self._year_summaries(years),
             "disk": disk_footprint(self.project_root),
             "admin_import_url": deploy_cfg.get("admin_import_url") or "",
-            "viewer_data": "./data/aggregator_view.json",
+            "viewer_data": f"/api/view?year={latest}" if latest else "",
+            "latest_view_url": f"/api/view?year={latest}" if latest else "",
         }
 
     def _year_summaries(self, years: list[int]) -> dict[str, dict]:
@@ -142,9 +159,13 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
     def _existing_year_payload(self, year: int) -> dict | None:
         ingest_dir = self.project_root / "data" / "bm_ingest" / str(year)
         summary_path = ingest_dir / f"ingest_summary_{year}.json"
-        if not ingest_dir.exists():
+        preview = resolve_preview_path(self.project_root, year)
+        if not ingest_dir.exists() and preview is None:
             return None
-        has_outputs = any(ingest_dir.glob("*.csv")) or summary_path.exists()
+        has_outputs = (
+            (ingest_dir.exists() and (any(ingest_dir.glob("*.csv")) or summary_path.exists()))
+            or preview is not None
+        )
         if not has_outputs:
             return None
         summary = None
@@ -152,21 +173,14 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
         return {
             "year": year,
-            "path": str(ingest_dir),
+            "path": str(ingest_dir) if ingest_dir.exists() else str(preview),
             "project_count": (summary or {}).get("project_count"),
             "upload_ready_count": (summary or {}).get("upload_ready_count"),
             "with_hero_image": (summary or {}).get("with_hero_image"),
         }
 
     def _list_years(self) -> list[int]:
-        root = self.project_root / "data" / "bm_ingest"
-        if not root.exists():
-            return []
-        years: list[int] = []
-        for child in root.iterdir():
-            if child.is_dir() and child.name.isdigit():
-                years.append(int(child.name))
-        return sorted(years, reverse=True)
+        return list_prepared_years(self.project_root)
 
     def _read_body(self) -> bytes:
         length = int(self.headers.get("Content-Length") or 0)
@@ -383,7 +397,7 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
                 "summary": summary,
                 "saved_www_path": "",
                 "uploaded_art_path": str(art_path),
-                "viewer_reload": "./data/aggregator_view.json",
+                "viewer_reload": f"/api/view?year={year}",
                 "paths": {key: str(value) for key, value in paths.items()},
                 "disk": disk_footprint(self.project_root),
                 "steps": steps,
@@ -417,14 +431,15 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
     def _handle_load_year(self) -> dict:
         body = json.loads(self._read_body().decode("utf-8") or "{}")
         year = int(body.get("year") or 0)
-        source = self.project_root / "data" / "bm_ingest" / str(year) / f"aggregator_view_{year}.json"
-        if not source.exists():
+        path = resolve_preview_path(self.project_root, year) if year else None
+        if path is None:
             return {"ok": False, "error": f"No aggregator view for {year}"}
-        target_dir = self.project_root / "viewer" / "aggregator" / "data"
-        target_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target_dir / "aggregator_view.json")
-        shutil.copy2(source, target_dir / f"aggregator_view_{year}.json")
-        return {"ok": True, "year": year, "viewer_reload": "./data/aggregator_view.json"}
+        return {
+            "ok": True,
+            "year": year,
+            "preview_path": str(path),
+            "viewer_reload": f"/api/view?year={year}",
+        }
 
     def _handle_export_csv(self) -> None:
         body = json.loads(self._read_body().decode("utf-8") or "{}")
