@@ -3,120 +3,178 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Burning Man → Artelier</title>
+  <title>Artelier Aggregator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=artelier-agg-3" />
 </head>
 <body>
   <div class="page">
     <header class="briefing">
       <div class="briefing-copy">
-        <p class="eyebrow">Burning Man Art Aggregator</p>
-        <h1>Build an Artelier upload from one Burning Man year</h1>
+        <p class="eyebrow">Artelier Aggregator</p>
+        <h1>Prepare Artelier-ready records from a website or spreadsheet</h1>
         <p class="lede" id="about">
-          Start from a PlayaEvents ART spreadsheet. Match each project to the History Archive
-          for hero photos and proof links, attach contributor names when we can, then download
-          the Artelier CSV.
+          Enter an artist website or upload a Burning Man / PlayaEvents ART CSV.
+          Both paths share the same review workspace and 36-column Artelier export.
         </p>
       </div>
       <div class="briefing-actions">
-        <p class="year-pill" id="year-pill">Year —</p>
+        <p class="year-pill" id="year-pill">Run —</p>
         <p class="disk-pill" id="disk-pill">Disk —</p>
         <label class="sort-label header-year">
-          Switch prepared year
+          Open prepared run / year
           <select id="year-switch"></select>
         </label>
-        <button type="button" class="secondary-btn" id="switch-year">Open year</button>
+        <button type="button" class="secondary-btn" id="switch-year">Open</button>
       </div>
     </header>
 
     <nav class="wizard-steps" aria-label="Wizard steps">
-      <button type="button" class="wizard-tab active" data-step="1">1. Choose year file</button>
-      <button type="button" class="wizard-tab" data-step="2">2. Match &amp; build</button>
-      <button type="button" class="wizard-tab" data-step="3">3. Review &amp; download</button>
+      <button type="button" class="wizard-tab active" data-step="1">
+        <span class="wizard-num">1</span> Source
+      </button>
+      <button type="button" class="wizard-tab" data-step="2">
+        <span class="wizard-num">2</span> Prepare
+      </button>
+      <button type="button" class="wizard-tab" data-step="3">
+        <span class="wizard-num">3</span> Review
+      </button>
+      <button type="button" class="wizard-tab" data-step="4">
+        <span class="wizard-num">4</span> Export
+      </button>
     </nav>
 
     <section class="wizard-panel" id="step-1" data-step-panel="1">
-      <h2>Choose the PlayaEvents ART file for one year</h2>
+      <h2>Choose a source</h2>
       <p class="ops-help">
-        Use a file named like <code>PlayaEvents-2022_ART.csv</code> from What When Where /
-        PlayaEvents. It must have columns <strong>Title</strong>, <strong>Description</strong>,
-        <strong>Link</strong>, and <strong>UID</strong> (plus Type, Camp, Where, Extra).
+        Start with an artist website when you do not already have a spreadsheet.
+        Burning Man CSV keeps the PlayaEvents → History Archive path.
       </p>
-      <p class="ops-help">
-        Do <strong>not</strong> upload an Artelier export (columns like <code>project_title</code>
-        or <code>bm_uid</code>) — that is the <em>output</em> of this tool, not the input.
-        Your upload is used only for this run; files already in
-        <code>What When Where Files</code> are never overwritten.
-      </p>
-      <div class="ops-row">
-        <label class="file-btn secondary">
-          Choose PlayaEvents ART CSV
-          <input type="file" id="ingest-file" accept=".csv,text/csv" hidden />
+
+      <div class="source-cards" role="radiogroup" aria-label="Input source">
+        <label class="source-card is-recommended">
+          <input type="radio" name="source-id" value="artist_website" checked />
+          <span class="source-card-badge">Recommended</span>
+          <span class="source-card-title">Artist website</span>
+          <span class="source-card-copy">
+            Crawl a portfolio domain and build Artelier records — no spreadsheet required.
+          </span>
         </label>
-        <p class="year-pill" id="detected-year-pill">Year not detected</p>
+        <label class="source-card">
+          <input type="radio" name="source-id" value="burning_man_csv" />
+          <span class="source-card-title">Burning Man CSV</span>
+          <span class="source-card-copy">
+            Upload a PlayaEvents ART file for one year and match the History Archive.
+          </span>
+        </label>
       </div>
-      <p class="file-name" id="ingest-file-name">No file selected</p>
-      <p class="ops-status" id="csv-inspect-message"></p>
-      <button type="button" class="primary-btn" id="goto-prepare" disabled>Continue to match &amp; build</button>
+
+      <div id="source-artist" class="source-form">
+        <div class="source-form-grid">
+          <label>
+            Artist name
+            <input type="text" id="artist-name" placeholder="Clara Berta" autocomplete="name" />
+          </label>
+          <label>
+            Website URL
+            <input type="url" id="website-url" placeholder="https://claraberta.com/" autocomplete="url" />
+          </label>
+          <label class="span-2">
+            Optional portfolio / index URL
+            <input type="url" id="portfolio-url" placeholder="https://claraberta.com/artworks/" />
+          </label>
+        </div>
+        <div class="ops-row source-options">
+          <label>
+            Crawl limit
+            <input type="number" id="max-pages" min="1" max="500" value="150" />
+          </label>
+          <label class="checkline">
+            <input type="checkbox" id="render-javascript" />
+            JavaScript rendering (Playwright, optional)
+          </label>
+          <button type="button" class="secondary-btn" id="fill-clara-example">Use Clara Berta example</button>
+        </div>
+      </div>
+
+      <div id="source-bm" class="source-form" hidden>
+        <p class="ops-help">
+          Use a file named like <code>PlayaEvents-2022_ART.csv</code> with columns
+          Title, Description, Link, and UID. Do not upload an Artelier export.
+        </p>
+        <div class="ops-row">
+          <label class="file-btn secondary">
+            Choose PlayaEvents ART CSV
+            <input type="file" id="ingest-file" accept=".csv,text/csv" hidden />
+          </label>
+          <p class="year-pill" id="detected-year-pill">Year not detected</p>
+        </div>
+        <p class="file-name" id="ingest-file-name">No file selected</p>
+      </div>
+
+      <div class="inspect-panel" id="inspect-panel" hidden>
+        <p class="inspect-label">Inspection</p>
+        <p class="ops-status" id="csv-inspect-message"></p>
+      </div>
+      <button type="button" class="primary-btn" id="goto-prepare" disabled>Continue to prepare</button>
     </section>
 
     <section class="wizard-panel" id="step-2" data-step-panel="2" hidden>
-      <h2>Match to the History Archive and build the Artelier CSV</h2>
-      <p class="ops-help" id="prepare-summary">Choose a PlayaEvents file in step 1 first.</p>
-      <ul class="prepare-list">
-        <li>
-          <strong>History Archive match</strong> — look up each project by UID/title; pull
-          hero image URLs and proof page links (needs network; can take a few minutes).
-        </li>
-        <li>
-          <strong>Names</strong> — by default, reuse local credits and any saved identity cache
-          (no open web search). Heroes do <em>not</em> come from the spreadsheet; they come from the archive.
-        </li>
-        <li>
-          <strong>Build preview</strong> — write the year folder under
-          <code>data/bm_ingest/&lt;year&gt;/</code> and show the gallery below.
-        </li>
+      <h2>Prepare review records</h2>
+      <p class="ops-help" id="prepare-summary">Choose a source in step 1 first.</p>
+      <ul class="prepare-list" id="prepare-list">
+        <li><strong>Inspect</strong> — confirm what was detected from the source.</li>
+        <li><strong>Extract &amp; normalize</strong> — build the shared Artelier review model.</li>
+        <li><strong>Evidence</strong> — keep raw pages / provenance for audit.</li>
       </ul>
-      <label class="checkline">
+      <label class="checkline" id="identity-option" hidden>
         <input type="checkbox" id="run-identity-online" />
-        Also search the web for unclear artist / Burner names (slow; limited batch — leave off unless you need it)
+        Also search the web for unclear artist / Burner names (Burning Man only; slow)
       </label>
       <div class="overwrite-warn" id="overwrite-warn" hidden>
         <p>
           <strong>This year already has Aggregator outputs.</strong>
-          Running again replaces CSVs and preview under <code>data/bm_ingest</code> and
-          verification caches — not your PlayaEvents template on disk.
+          Running again replaces CSVs and preview under <code>data/bm_ingest</code>.
         </p>
         <label class="checkline">
           <input type="checkbox" id="confirm-overwrite" />
           Yes, rebuild this year’s Aggregator outputs
         </label>
       </div>
-      <button type="button" class="primary-btn" id="run-prepare" disabled>Match archive &amp; build preview</button>
+      <button type="button" class="primary-btn" id="run-prepare" disabled>Start processing</button>
       <ol class="process-steps" id="prepare-steps" aria-live="polite"></ol>
       <p class="ops-status" id="prepare-status"></p>
     </section>
 
     <section class="wizard-panel" id="step-3" data-step-panel="3" hidden>
-      <h2>Review projects, then download for Artelier</h2>
+      <h2>Review and correct</h2>
       <p class="ops-help">
-        The gallery below is what you can download. Pick a filter (Needs review, Has hero photo, etc.)
-        or search — the Artelier CSV export includes only the projects currently shown.
+        Filter for low confidence, missing images, missing attribution, duplicates,
+        incomplete fields, and export-ready records. Open a card to edit core fields
+        and see why a record is blocked from export.
+      </p>
+    </section>
+
+    <section class="wizard-panel" id="step-4" data-step-panel="4" hidden>
+      <h2>Validate and export</h2>
+      <p class="ops-help">
+        Download uses the authoritative 36-column Artelier schema.
+        Incomplete records stay in the review queue until corrected.
       </p>
       <div class="ops-row">
         <button type="button" class="primary-btn" id="download-upload" disabled>Download Artelier CSV</button>
+        <button type="button" class="secondary-btn" id="run-validate">Validate export-ready rows</button>
         <button type="button" class="secondary-btn" id="run-deploy" disabled>Copy into deploy folder</button>
       </div>
       <p class="ops-status" id="export-status"></p>
       <p class="ops-status" id="deploy-status"></p>
+      <pre class="ops-log" id="validate-log">Validation not run yet.</pre>
       <details class="more-options">
-        <summary>Advanced: validate, core-only slice, cleanup</summary>
+        <summary>Advanced</summary>
         <div class="ops-row">
-          <button type="button" class="secondary-btn" id="run-validate">Validate upload-ready rows only</button>
-          <button type="button" class="secondary-btn" id="download-core" disabled>Download Artelier core columns only</button>
+          <button type="button" class="secondary-btn" id="download-core" disabled>Download core columns only</button>
           <button type="button" class="secondary-btn" id="open-admin" disabled>Open Artelier import URL</button>
           <button type="button" class="secondary-btn" id="run-cleanup">Delete temp upload folders</button>
         </div>
@@ -124,7 +182,6 @@
           <input type="checkbox" id="export-anyway" />
           Allow deploy copy even if validation fails
         </label>
-        <pre class="ops-log" id="validate-log">Validation not run yet.</pre>
         <p class="ops-status" id="cleanup-status"></p>
         <label class="file-btn secondary">
           Load a saved aggregator_view JSON…
@@ -133,10 +190,10 @@
       </details>
     </section>
 
-    <section class="checklist" id="checklist" aria-label="Year checklist"></section>
+    <section class="checklist" id="checklist" aria-label="Run checklist"></section>
 
-    <section class="controls">
-      <input type="search" id="search" placeholder="Search title, contributor, camp, address…" />
+    <section class="controls is-dimmed">
+      <input type="search" id="search" placeholder="Search title, contributor, location…" />
       <div class="filters" id="filters" role="tablist" aria-label="Filters"></div>
       <label class="sort-label">
         Sort
@@ -149,11 +206,11 @@
       <p class="result-count" id="result-count"></p>
     </section>
 
-    <div class="workspace">
+    <div class="workspace is-dimmed">
       <main class="gallery" id="gallery">
         <div class="loading">
-          No year loaded yet. Choose a PlayaEvents ART file and run Match &amp; build,
-          or use “Open year” above for a year you already prepared.
+          Choose <strong>Artist website</strong> or <strong>Burning Man CSV</strong> above,
+          then prepare a run to open the review gallery.
         </div>
       </main>
       <aside class="detail" id="detail" hidden>
@@ -162,6 +219,6 @@
       </aside>
     </div>
   </div>
-  <script src="./app.js"></script>
+  <script src="./app.js?v=artelier-agg-3"></script>
 </body>
 </html>

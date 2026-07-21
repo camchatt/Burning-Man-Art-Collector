@@ -149,6 +149,20 @@ Outputs in `data/bm_ingest/<year>/`:
 - `ingest_summary_<year>.json`
 - `aggregator_view_<year>.json` (pre-upload preview data)
 
+Ingest also merges GPS from
+`../What When Where Files/Coordinate Data/GIS-{year}.json` (or `art_{year}.json`)
+into `playa_latitude` / `playa_longitude` and prefers the GIS `location_string`
+for `playa_address`.
+
+To patch existing ready upload CSVs before Artelier import:
+
+```bash
+py -3 scripts/enrich_artelier_upload_coords.py --dry-run
+py -3 scripts/enrich_artelier_upload_coords.py
+```
+
+That updates files under `../What When Where Files/Artelier Upload/`.
+
 ### Aggregator hub (recommended daily workflow)
 
 The hub is the main UI: preview, upload a new year ART CSV, validate Artelier

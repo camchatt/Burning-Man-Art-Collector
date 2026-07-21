@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import time
+from http.client import InvalidURL
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from burning_man_scraper.url_utils import encode_http_url
 from burning_man_scraper.verification.models import ImageAsset
 
 
@@ -38,10 +40,12 @@ class ImageValidator:
         source_page_url: str | None = None,
         alt_text: str | None = None,
     ) -> ImageAsset:
-        attribution = infer_attribution(image_url, alt_text)
+        # Archive CDN filenames often contain spaces; encode before http.client sees them.
+        safe_url = encode_http_url(image_url) or image_url
+        attribution = infer_attribution(safe_url, alt_text)
         try:
             self._respect_delay()
-            request = Request(image_url, method="HEAD", headers={"User-Agent": self.user_agent})
+            request = Request(safe_url, method="HEAD", headers={"User-Agent": self.user_agent})
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 status = response.status
                 final_url = response.geturl()
@@ -49,7 +53,7 @@ class ImageValidator:
                 content_length = _parse_int_header(response.headers.get("Content-Length"))
                 active = _is_active_image(status, content_type, content_length, self.min_image_bytes)
                 return ImageAsset(
-                    image_url=image_url,
+                    image_url=safe_url,
                     final_url=final_url,
                     http_status=status,
                     content_type=content_type,
@@ -66,13 +70,13 @@ class ImageValidator:
         except HTTPError as exc:
             if exc.code in {405, 501}:
                 return self._validate_with_get(
-                    image_url,
+                    safe_url,
                     source_page_url=source_page_url,
                     alt_text=alt_text,
                     attribution=attribution,
                 )
             return ImageAsset(
-                image_url=image_url,
+                image_url=safe_url,
                 http_status=exc.code,
                 alt_text=alt_text,
                 source_page_url=source_page_url,
@@ -81,9 +85,9 @@ class ImageValidator:
                 review_required=True,
                 validation_error=str(exc),
             )
-        except URLError as exc:
+        except (URLError, InvalidURL, ValueError) as exc:
             return ImageAsset(
-                image_url=image_url,
+                image_url=safe_url,
                 alt_text=alt_text,
                 source_page_url=source_page_url,
                 source_type=attribution["source_type"],
@@ -127,7 +131,7 @@ class ImageValidator:
                     attribution_confidence=str(attribution["attribution_confidence"]),
                     review_required=bool(attribution["review_required"]),
                 )
-        except (HTTPError, URLError) as exc:
+        except (HTTPError, URLError, InvalidURL, ValueError) as exc:
             status = exc.code if isinstance(exc, HTTPError) else None
             return ImageAsset(
                 image_url=image_url,

@@ -11,6 +11,36 @@ from pathlib import Path
 from burning_man_scraper.artelier_schema import ImportSchema, load_import_schema, validate_artelier_row
 from burning_man_scraper.bm_ingest.schema import BM_EXTENSION_HEADERS
 from burning_man_scraper.bm_ingest.view_bundle import is_row_upload_ready
+from burning_man_scraper.url_utils import encode_http_url
+
+
+_UPLOAD_URL_FIELDS = (
+    "hero_image_url",
+    "contributor_website",
+    "proof_external_url",
+    "bm_hero_image_source_url",
+    "hero_image_source_page",
+    "artist_website",
+    "source_record_url",
+)
+
+
+def encode_row_http_urls(row: dict[str, str]) -> dict[str, str]:
+    """Percent-encode http(s) URL cells so deploy/download CSVs are fetch-safe."""
+    out = dict(row)
+    for field in _UPLOAD_URL_FIELDS:
+        value = (out.get(field) or "").strip()
+        if value:
+            out[field] = encode_http_url(value)
+    image_urls = (out.get("image_urls") or "").strip()
+    if image_urls:
+        parts: list[str] = []
+        for part in image_urls.split("|"):
+            piece = part.strip()
+            if piece:
+                parts.append(encode_http_url(piece))
+        out["image_urls"] = "|".join(parts)
+    return out
 
 
 def _slugify_filter_label(label: str) -> str:
@@ -41,7 +71,8 @@ def row_export_keys(row: dict[str, str]) -> set[str]:
 def export_filtered_csv(
     project_root: Path,
     *,
-    year: int,
+    year: int = 0,
+    run_id: str = "",
     keys: list[str],
     kind: str = "upload",
     filter_id: str = "all",
@@ -49,9 +80,17 @@ def export_filtered_csv(
     unfiltered: bool = False,
 ) -> dict:
     """Filter an Artelier CSV to the keys shown in the gallery (uid / slug / title)."""
-    source = resolve_ingest_csv(project_root, year, kind=kind)
-    if source is None:
-        raise FileNotFoundError(f"CSV not found for year {year}")
+    if run_id:
+        from burning_man_scraper.sources.run_store import resolve_run_csv
+
+        source = resolve_run_csv(project_root, run_id)
+        if source is None:
+            raise FileNotFoundError(f"CSV not found for run {run_id}")
+        kind = "core"
+    else:
+        source = resolve_ingest_csv(project_root, year, kind=kind)
+        if source is None:
+            raise FileNotFoundError(f"CSV not found for year {year}")
 
     wanted = {key.strip() for key in keys if key and str(key).strip()}
     if not wanted:
@@ -62,10 +101,19 @@ def export_filtered_csv(
         fieldnames = list(reader.fieldnames or [])
         if not fieldnames:
             raise ValueError(f"CSV has no header: {source}")
+        use_core_headers = bool(run_id)
+        schema_path = project_root / "config" / "artelier_import_schema.yaml"
+        if use_core_headers and schema_path.exists():
+            schema = load_import_schema(schema_path)
+            fieldnames = list(schema.headers)
         matched_rows: list[dict[str, str]] = []
         for row in reader:
             if row_export_keys(row) & wanted:
-                matched_rows.append(row)
+                encoded = encode_row_http_urls(row)
+                if use_core_headers and schema_path.exists():
+                    matched_rows.append({header: encoded.get(header, "") for header in fieldnames})
+                else:
+                    matched_rows.append(encoded)
 
     if not matched_rows:
         raise ValueError("No CSV rows matched the filtered projects.")
@@ -85,6 +133,7 @@ def export_filtered_csv(
     return {
         "ok": True,
         "year": year,
+        "run_id": run_id,
         "kind": kind,
         "filter_id": filter_id,
         "filter_label": filter_label,
@@ -97,12 +146,38 @@ def export_filtered_csv(
 
 def validate_core_csv(
     project_root: Path,
-    year: int,
+    year: int = 0,
     *,
+    run_id: str = "",
     max_errors: int = 25,
     upload_ready_only: bool = True,
 ) -> dict:
     schema = load_import_schema(project_root / "config" / "artelier_import_schema.yaml")
+    if run_id:
+        from burning_man_scraper.sources.run_store import resolve_run_csv
+
+        path = resolve_run_csv(project_root, run_id)
+        if path is None:
+            return {
+                "ok": False,
+                "year": year,
+                "run_id": run_id,
+                "path": "",
+                "row_count": 0,
+                "error_count": 1,
+                "errors": [{"row": 0, "field": "file", "messages": [f"Missing ingest CSV for run {run_id}"]}],
+                "upload_ready_only": upload_ready_only,
+            }
+        result = validate_core_csv_path(
+            path,
+            schema,
+            year=year or None,
+            max_errors=max_errors,
+            upload_ready_only=upload_ready_only,
+        )
+        result["run_id"] = run_id
+        return result
+
     path = project_root / "data" / "bm_ingest" / str(year) / f"artelier_bm_upload_{year}.csv"
     if not path.exists():
         path = project_root / "data" / "bm_ingest" / str(year) / f"artelier_core_only_{year}.csv"
@@ -205,7 +280,8 @@ def _write_filtered_csv(
             if upload_ready_only and not is_row_upload_ready(row):
                 skipped += 1
                 continue
-            rows.append({header: (row.get(header) or "") for header in headers})
+            encoded = encode_row_http_urls(row)
+            rows.append({header: (encoded.get(header) or "") for header in headers})
             kept += 1
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w", encoding="utf-8-sig", newline="") as handle:

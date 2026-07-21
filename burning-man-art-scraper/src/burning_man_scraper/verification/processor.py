@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from burning_man_scraper.url_utils import encode_http_url
 from burning_man_scraper.verification.archive_index import (
     build_archive_index,
     extract_uid,
@@ -288,9 +289,12 @@ def _collect_image_urls(target: dict, archive: ArchiveIndexRecord) -> list[str]:
     seen: set[str] = set()
     ordered: list[str] = []
     for url in [*archive.image_urls, *target.get("image_urls", [])]:
-        if url and url not in seen:
-            seen.add(url)
-            ordered.append(url)
+        if not url:
+            continue
+        safe = encode_http_url(url) or url
+        if safe not in seen:
+            seen.add(safe)
+            ordered.append(safe)
     return ordered
 
 
@@ -319,30 +323,32 @@ def _determine_status(
 
 
 def check_url_status(url: str, user_agent: str, timeout_seconds: float) -> str:
+    safe_url = encode_http_url(url) or url
     try:
-        request = Request(url, method="HEAD", headers={"User-Agent": user_agent})
+        request = Request(safe_url, method="HEAD", headers={"User-Agent": user_agent})
         with urlopen(request, timeout=timeout_seconds) as response:
             if response.status < 400:
                 return "active"
             return f"http_{response.status}"
     except HTTPError as exc:
         if exc.code in {405, 501}:
-            return check_url_status_get(url, user_agent, timeout_seconds)
+            return check_url_status_get(safe_url, user_agent, timeout_seconds)
         return f"http_{exc.code}"
-    except URLError:
+    except (URLError, ValueError):
         return "unreachable"
 
 
 def check_url_status_get(url: str, user_agent: str, timeout_seconds: float) -> str:
+    safe_url = encode_http_url(url) or url
     try:
-        request = Request(url, headers={"User-Agent": user_agent})
+        request = Request(safe_url, headers={"User-Agent": user_agent})
         with urlopen(request, timeout=timeout_seconds) as response:
             if response.status < 400:
                 return "active"
             return f"http_{response.status}"
     except HTTPError as exc:
         return f"http_{exc.code}"
-    except URLError:
+    except (URLError, ValueError):
         return "unreachable"
 
 

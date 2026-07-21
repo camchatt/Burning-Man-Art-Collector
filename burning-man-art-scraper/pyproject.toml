@@ -7,8 +7,9 @@ name = "burning-man-art-scraper"
 version = "0.1.0"
 description = "Standalone Burning Man art archive scraper"
 requires-python = ">=3.10"
-dependencies = ["pydantic>=2"]
+dependencies = ["pydantic>=2", "requests>=2.31", "beautifulsoup4>=4.12"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 search = ["ddgs>=9", "duckduckgo-search>=6"]
+artist_site = ["playwright>=1.40"]

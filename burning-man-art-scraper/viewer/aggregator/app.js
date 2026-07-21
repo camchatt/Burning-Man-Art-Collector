@@ -4,16 +4,21 @@ function viewUrlForYear(year) {
   return year ? `/api/view?year=${year}` : DEFAULT_DATA_URL;
 }
 
+function viewUrlForRun(runId) {
+  return runId ? `/api/view?run_id=${encodeURIComponent(runId)}` : DEFAULT_DATA_URL;
+}
+
 const FILTERS = [
   { id: "all", label: "All projects" },
   { id: "attention", label: "Needs review" },
-  { id: "ready", label: "Ready for Artelier" },
-  { id: "missing_hero", label: "No hero photo" },
+  { id: "ready", label: "Export-ready" },
+  { id: "low_confidence", label: "Low confidence" },
+  { id: "missing_hero", label: "Missing images" },
+  { id: "missing_attribution", label: "Missing attribution" },
+  { id: "duplicates", label: "Duplicates" },
+  { id: "incomplete", label: "Incomplete fields" },
   { id: "missing_proof", label: "No proof link" },
-  { id: "playa_uncertain", label: "Burner name unclear" },
-  { id: "kind_uncertain", label: "Person vs org unclear" },
   { id: "has_image", label: "Has hero photo" },
-  { id: "has_playa", label: "Has playa address" },
 ];
 
 let bundle = null;
@@ -22,9 +27,11 @@ let selectedUid = null;
 let hubStatus = null;
 let ingestFile = null;
 let detectedYear = null;
+let currentRunId = null;
 let alreadyProcessed = false;
 let adminImportUrl = "";
 let wizardStep = 1;
+let selectedSource = "artist_website";
 
 function esc(value) {
   return String(value ?? "")
@@ -52,9 +59,83 @@ function showStep(step) {
   document.querySelectorAll("[data-step-panel]").forEach((panel) => {
     panel.hidden = Number(panel.dataset.stepPanel) !== step;
   });
-  if (step === 3) {
-    document.querySelector(".controls")?.classList.remove("is-dimmed");
-    document.querySelector(".workspace")?.classList.remove("is-dimmed");
+  const revealReview = step >= 3 || Boolean(bundle);
+  document.querySelector(".controls")?.classList.toggle("is-dimmed", !revealReview);
+  document.querySelector(".workspace")?.classList.toggle("is-dimmed", !revealReview);
+}
+
+function currentSourceId() {
+  return document.querySelector('input[name="source-id"]:checked')?.value || "artist_website";
+}
+
+function syncSourceForm() {
+  selectedSource = currentSourceId();
+  const isArtist = selectedSource === "artist_website";
+  const isBm = selectedSource === "burning_man_csv";
+  document.getElementById("source-artist").hidden = !isArtist;
+  document.getElementById("source-bm").hidden = !isBm;
+  document.getElementById("identity-option").hidden = !isBm;
+  document.getElementById("overwrite-warn").hidden = !isBm || !alreadyProcessed;
+  updateContinueEnabled();
+}
+
+function clearInactiveSourceStatus() {
+  setInspectMessage("");
+  const summary = document.getElementById("prepare-summary");
+  if (selectedSource === "artist_website") {
+    if (summary && !summary.textContent.includes("Built ")) {
+      summary.textContent = artistSourceReady()
+        ? "Ready to crawl artist website."
+        : "Choose a source in step 1 first.";
+    }
+  } else if (detectedYear) {
+    summary.textContent = `Ready to prepare Burning Man ${detectedYear}.`;
+  } else {
+    summary.textContent = ingestFile
+      ? "Detect year from the selected CSV to continue."
+      : "Choose a source in step 1 first.";
+  }
+}
+
+function artistSourceReady() {
+  const artist = document.getElementById("artist-name").value.trim();
+  const url = document.getElementById("website-url").value.trim();
+  if (!artist || !url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function updateContinueEnabled() {
+  const btn = document.getElementById("goto-prepare");
+  const prep = document.getElementById("run-prepare");
+  if (selectedSource === "artist_website") {
+    const ok = artistSourceReady();
+    btn.disabled = !ok;
+    prep.disabled = !ok;
+    if (ok) {
+      const summary = document.getElementById("prepare-summary");
+      if (summary && !summary.textContent.includes("Built ")) {
+        summary.textContent = "Ready to crawl artist website.";
+      }
+    }
+  } else {
+    btn.disabled = !ingestFile || !detectedYear;
+    prep.disabled = !ingestFile || !detectedYear;
+  }
+}
+
+function setInspectMessage(message = "", { ok = false } = {}) {
+  const panel = document.getElementById("inspect-panel");
+  const el = document.getElementById("csv-inspect-message");
+  el.textContent = message || "";
+  if (panel) {
+    panel.hidden = !message;
+    panel.classList.toggle("is-ok", Boolean(ok && message));
+    panel.classList.toggle("is-error", Boolean(!ok && message));
   }
 }
 
@@ -64,26 +145,16 @@ function setDetectedYear(year, message = "", already = false) {
   document.getElementById("detected-year-pill").textContent = detectedYear
     ? `Year ${detectedYear}`
     : "Year not detected";
-  document.getElementById("csv-inspect-message").textContent = message || "";
-  document.getElementById("goto-prepare").disabled = !ingestFile || !detectedYear;
-  document.getElementById("run-prepare").disabled = !ingestFile || !detectedYear;
+  setInspectMessage(message || "", { ok: Boolean(detectedYear) });
   document.getElementById("overwrite-warn").hidden = !alreadyProcessed;
   if (!alreadyProcessed) {
     document.getElementById("confirm-overwrite").checked = false;
   }
-  if (detectedYear) {
+  if (detectedYear && selectedSource === "burning_man_csv") {
     document.getElementById("prepare-summary").textContent =
-      `Ready to match Burning Man ${detectedYear} to the History Archive` +
-      (message ? ` — ${message}` : ".");
-    const deployYear = document.getElementById("year-switch");
-    if (deployYear && ![...deployYear.options].some((opt) => opt.value === String(detectedYear))) {
-      const opt = document.createElement("option");
-      opt.value = String(detectedYear);
-      opt.textContent = String(detectedYear);
-      deployYear.appendChild(opt);
-    }
-    if (deployYear) deployYear.value = String(detectedYear);
+      `Ready to prepare Burning Man ${detectedYear}` + (message ? ` — ${message}` : ".");
   }
+  updateContinueEnabled();
 }
 
 function renderProcessSteps(steps) {
@@ -110,38 +181,33 @@ function renderProcessSteps(steps) {
 function setBundle(data) {
   bundle = data;
   selectedUid = null;
+  currentRunId = data.meta?.run_id || currentRunId;
   if (data.meta?.about) {
     document.getElementById("about").textContent = data.meta.about;
   }
-  document.getElementById("year-pill").textContent = `Year ${data.meta?.year ?? "—"}`;
-  const year = data.meta?.year;
-  if (year) {
-    const yearSwitch = document.getElementById("year-switch");
-    if (![...yearSwitch.options].some((opt) => opt.value === String(year))) {
-      const opt = document.createElement("option");
-      opt.value = String(year);
-      opt.textContent = String(year);
-      yearSwitch.appendChild(opt);
-    }
-    yearSwitch.value = String(year);
-  }
+  const label = data.meta?.run_label || data.meta?.year || "—";
+  document.getElementById("year-pill").textContent = data.meta?.run_id
+    ? `Run ${label}`
+    : `Year ${label}`;
   renderChecklist(data.upload_checklist || {});
   renderFilters();
   renderGallery();
   document.getElementById("detail").hidden = true;
   document.querySelector(".workspace").classList.remove("detail-open");
+  document.querySelector(".controls")?.classList.remove("is-dimmed");
+  document.querySelector(".workspace")?.classList.remove("is-dimmed");
   document.getElementById("download-upload").disabled = false;
-  document.getElementById("run-deploy").disabled = false;
+  document.getElementById("download-core").disabled = false;
+  document.getElementById("run-deploy").disabled = !data.meta?.year;
 }
 
 function renderChecklist(c) {
   const items = [
-    { label: "Projects in year", value: c.project_count ?? 0 },
-    { label: "Ready for Artelier", value: c.upload_ready_count ?? 0, tone: "ok" },
+    { label: "Projects", value: c.project_count ?? 0 },
+    { label: "Export-ready", value: c.upload_ready_count ?? 0, tone: "ok" },
     { label: "Needs review", value: c.needs_attention_count ?? 0, tone: "warn" },
-    { label: "Hero photos found", value: c.with_hero_image ?? 0 },
-    { label: "Playa addresses", value: c.with_playa_address ?? 0 },
-    { label: "Missing proof link", value: c.missing_proof_count ?? 0, tone: c.missing_proof_count ? "bad" : "" },
+    { label: "Hero photos", value: c.with_hero_image ?? 0 },
+    { label: "Missing proof", value: c.missing_proof_count ?? 0, tone: c.missing_proof_count ? "bad" : "" },
   ];
   document.getElementById("checklist").innerHTML = items
     .map(
@@ -171,12 +237,13 @@ function filteredProjects() {
   rows = rows.filter((p) => {
     if (activeFilter === "attention") return p.needs_attention;
     if (activeFilter === "ready") return p.upload_ready;
+    if (activeFilter === "low_confidence") return p.review_flags?.includes("low_confidence") || p.review_flags?.includes("sparse_evidence");
     if (activeFilter === "missing_hero") return !p.hero?.url || p.review_flags?.includes("hero_missing");
+    if (activeFilter === "missing_attribution") return p.review_flags?.includes("missing_attribution");
+    if (activeFilter === "duplicates") return p.review_flags?.includes("duplicate_candidate");
+    if (activeFilter === "incomplete") return p.review_flags?.includes("incomplete_fields") || !p.proof_url || !p.title;
     if (activeFilter === "missing_proof") return !p.proof_url;
-    if (activeFilter === "playa_uncertain") return p.review_flags?.includes("playa_name_uncertain");
-    if (activeFilter === "kind_uncertain") return p.review_flags?.includes("contributor_kind_uncertain");
     if (activeFilter === "has_image") return Boolean(p.hero?.url);
-    if (activeFilter === "has_playa") return Boolean(p.place?.playa_address);
     return true;
   });
 
@@ -187,7 +254,8 @@ function filteredProjects() {
         p.people?.contributor_display_name,
         p.people?.source_artist_credit,
         p.place?.playa_address,
-        p.place?.theme_camp,
+        p.place?.project_location,
+        p.place?.display,
         p.summary,
       ]
         .join(" ")
@@ -211,7 +279,7 @@ function filteredProjects() {
 
 function attentionChips(project) {
   const chips = [];
-  if (project.upload_ready) chips.push({ text: "Ready for Artelier", tone: "ok" });
+  if (project.upload_ready) chips.push({ text: "Export-ready", tone: "ok" });
   for (const label of project.flag_labels || []) {
     if (label === "Honorarium unknown") continue;
     const tone = label.toLowerCase().includes("missing") ? "bad" : "";
@@ -263,10 +331,11 @@ function updateExportButtonLabels() {
 }
 
 function exportFilteredCsv(kind) {
-  const year = Number(document.getElementById("year-switch").value || detectedYear || bundle?.meta?.year);
+  const year = Number(document.getElementById("year-switch").value || detectedYear || bundle?.meta?.year || 0);
+  const runId = currentRunId || bundle?.meta?.run_id || "";
   const status = document.getElementById("export-status") || document.getElementById("deploy-status");
-  if (!year || !bundle) {
-    if (status) status.textContent = "Open a prepared year first.";
+  if ((!year && !runId) || !bundle) {
+    if (status) status.textContent = "Open a prepared run first.";
     return;
   }
   const meta = currentFilterMeta();
@@ -287,8 +356,9 @@ function exportFilteredCsv(kind) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      year,
-      kind,
+      year: year || 0,
+      run_id: runId,
+      kind: runId ? "core" : kind,
       keys,
       filter_id: meta.filter_id,
       filter_label: meta.filter_label,
@@ -304,7 +374,7 @@ function exportFilteredCsv(kind) {
       const match = /filename="([^"]+)"/i.exec(disposition);
       const filename =
         match?.[1] ||
-        `artelier_${kind === "core" ? "core_only" : "bm_upload"}_${year}.csv`;
+        `artelier_${kind === "core" ? "core_only" : "upload"}.csv`;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -317,6 +387,7 @@ function exportFilteredCsv(kind) {
       if (status) {
         status.textContent = `Downloaded ${meta.rows.length} project(s) — ${meta.filter_label}.`;
       }
+      showStep(4);
     })
     .catch((err) => {
       if (status) status.textContent = err.message || "Export failed";
@@ -330,7 +401,7 @@ function renderGallery() {
   updateExportButtonLabels();
   if (!bundle) {
     gallery.innerHTML =
-      '<div class="loading">No year loaded yet. Choose a PlayaEvents ART file and run Match &amp; build, or open a prepared year above.</div>';
+      '<div class="loading">No run loaded yet. Choose Artist website or Burning Man CSV, then prepare.</div>';
     return;
   }
   if (!rows.length) {
@@ -346,13 +417,14 @@ function renderGallery() {
       const media = p.hero?.url
         ? `<img src="${esc(p.hero.url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'placeholder',textContent:'Image unavailable'}))" />`
         : '<div class="placeholder">No hero image</div>';
+      const place = p.place?.display || p.place?.project_location || p.place?.playa_address || "No location";
       return `
         <button type="button" class="card ${selectedUid === key ? "active" : ""}" data-key="${esc(key)}">
           ${media}
           <div class="card-body">
             <h2>${esc(p.title || "Untitled")}</h2>
             <div class="meta">${esc(p.people?.name || p.people?.contributor_display_name || "No contributor yet")}</div>
-            <div class="meta">${esc(p.place?.playa_address || "No playa address")}</div>
+            <div class="meta">${esc(place)}</div>
             <div class="chips">${chips}</div>
           </div>
         </button>`;
@@ -376,10 +448,17 @@ function renderDetail(project) {
   const people = project.people || {};
   const place = project.place || {};
   const hero = project.hero || {};
+  const evidence = project.evidence || {};
   const flagChips = (project.flag_labels || [])
     .map((label) => `<span class="chip">${esc(label)}</span>`)
     .join("");
+  const blocked = project.export_blocked_reason
+    ? `<p class="chip bad">Blocked from export: ${esc(project.export_blocked_reason)}</p>`
+    : project.upload_ready
+      ? `<p class="chip ok">Export-ready</p>`
+      : "";
 
+  const canEdit = Boolean(currentRunId || bundle?.meta?.run_id);
   body.innerHTML = `
     <div class="detail-hero">
       ${
@@ -389,44 +468,107 @@ function renderDetail(project) {
       }
     </div>
     <h2>${esc(project.title || "Untitled")}</h2>
-    <p class="meta">${esc(project.year)}${project.upload_ready ? " · Ready for Artelier" : " · Needs review"}</p>
+    <p class="meta">${esc(project.year)}${project.upload_ready ? " · Export-ready" : " · Needs review"}</p>
     <div class="chips" style="margin-top:0.5rem">${flagChips || '<span class="chip ok">No blocking flags</span>'}</div>
+    ${blocked}
 
-    <h3>Contributor</h3>
-    <p><strong>Person or Organization:</strong> ${esc(people.person_or_org || "unknown")}</p>
+    ${
+      canEdit
+        ? `<form class="edit-grid" id="correction-form">
+      <label>Project title<input name="project_title" value="${esc(project.title || "")}" /></label>
+      <label>Artist / contributor<input name="contributor_name" value="${esc(people.name || people.contributor_display_name || "")}" /></label>
+      <label>Year<input name="project_year" value="${esc(project.year || "")}" /></label>
+      <label>Location<input name="project_location" value="${esc(place.project_location || place.display || place.playa_address || "")}" /></label>
+      <label>Project type / style<input name="project_type" value="${esc(project.project_type || place.installation_type || "")}" /></label>
+      <label>Collection<input name="collection" value="${esc(project.collection || place.theme_camp || "")}" /></label>
+      <label>Hero image URL<input name="hero_image_url" value="${esc(hero.url || "")}" /></label>
+      <label>Approval state
+        <select name="approval_status">
+          <option value="draft" ${project.approval_status === "draft" ? "selected" : ""}>draft</option>
+          <option value="approved" ${project.approval_status === "approved" ? "selected" : ""}>approved</option>
+          <option value="rejected" ${project.approval_status === "rejected" ? "selected" : ""}>rejected</option>
+        </select>
+      </label>
+      <button type="submit" class="primary-btn">Save corrections</button>
+      <p class="ops-status" id="correction-status"></p>
+    </form>`
+        : `<h3>Contributor</h3>
     <p><strong>Name:</strong> ${esc(people.name || people.contributor_display_name || "—")}</p>
     <p><strong>Alt / Burner Name:</strong> ${esc(people.alt_burner_name || people.playa_name || "—")}</p>
-    <p><strong>Additional Credits:</strong> ${esc(people.additional_contributor_credits || "—")}</p>
-    <p><strong>Source credit:</strong> ${esc(people.source_artist_credit || "—")}</p>
     <p><strong>Summary:</strong> ${esc(project.summary || "—")}</p>
-
     <h3>Place</h3>
-    <p><strong>Playa address:</strong> ${esc(place.playa_address || "—")}</p>
-    <p><strong>Theme camp:</strong> ${esc(place.theme_camp || "—")}</p>
-    <p><strong>Type:</strong> ${esc(place.installation_type || "—")}</p>
+    <p><strong>Location:</strong> ${esc(place.display || place.project_location || place.playa_address || "—")}</p>
+    <p><strong>Type:</strong> ${esc(place.installation_type || "—")}</p>`
+    }
 
-    <h3>Proof &amp; hero</h3>
+    <h3>Proof &amp; evidence</h3>
     <p>${
       project.proof_url
-        ? `<a href="${esc(project.proof_url)}" target="_blank" rel="noopener">Open proof / archive page →</a>`
+        ? `<a href="${esc(project.proof_url)}" target="_blank" rel="noopener">Open source page →</a>`
         : "<span class='chip bad'>Missing proof link</span>"
     }</p>
-    <p><strong>Hero attribution:</strong> ${esc(hero.attribution || "—")}</p>
+    <div class="evidence-box">${esc(evidence.proof_description || project.summary || "No excerpt captured.")}</div>
   `;
+
+  const form = document.getElementById("correction-form");
+  if (form) {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const corrections = Object.fromEntries(data.entries());
+      const status = document.getElementById("correction-status");
+      status.textContent = "Saving…";
+      api("/api/records/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run_id: currentRunId || bundle?.meta?.run_id,
+          record_id: project.slug || project.uid || project.title,
+          corrections,
+        }),
+      })
+        .then((result) => {
+          status.textContent = "Saved.";
+          return fetch(result.viewer_reload || viewUrlForRun(currentRunId)).then((res) => res.json()).then(setBundle);
+        })
+        .then(() => {
+          const refreshed = findProject(projectKey(project)) || findProject(corrections.project_title);
+          if (refreshed) renderDetail(refreshed);
+        })
+        .catch((err) => {
+          status.textContent = err.message || "Save failed";
+        });
+    });
+  }
 }
 
-function populateYears(years) {
+function populateYears(years, runs) {
   const yearSwitch = document.getElementById("year-switch");
   const current = yearSwitch.value;
   yearSwitch.innerHTML = "";
-  for (const year of years) {
+  for (const run of runs || []) {
     const opt = document.createElement("option");
-    opt.value = String(year);
-    opt.textContent = String(year);
+    opt.value = `run:${run.run_id}`;
+    if (run.label) {
+      opt.textContent =
+        run.source_id === "artist_website"
+          ? `${run.label} · artist website`
+          : run.label;
+    } else {
+      opt.textContent = run.run_id;
+    }
     yearSwitch.appendChild(opt);
   }
-  if (years.length) {
-    yearSwitch.value = current && years.includes(Number(current)) ? current : String(years[0]);
+  for (const year of years || []) {
+    const opt = document.createElement("option");
+    opt.value = String(year);
+    opt.textContent = `BM ${year}`;
+    yearSwitch.appendChild(opt);
+  }
+  if (current && [...yearSwitch.options].some((opt) => opt.value === current)) {
+    yearSwitch.value = current;
+  } else if (yearSwitch.options.length) {
+    yearSwitch.selectedIndex = 0;
   }
 }
 
@@ -435,15 +577,47 @@ function updateDisk(disk) {
   document.getElementById("disk-pill").textContent = `Data ${disk.total_mb ?? "—"} MB`;
 }
 
+function inspectArtistSource() {
+  // Optional preflight only — never blocks Continue / Start.
+  updateContinueEnabled();
+  const artist = document.getElementById("artist-name").value.trim();
+  const url = document.getElementById("website-url").value.trim();
+  if (!artist || !url) {
+    setInspectMessage("");
+    return Promise.resolve();
+  }
+  setInspectMessage("Inspecting website…", { ok: false });
+  const form = new FormData();
+  form.append("source_id", "artist_website");
+  form.append("artist_name", artist);
+  form.append("website_url", url);
+  form.append("portfolio_url", document.getElementById("portfolio-url").value.trim());
+  form.append("max_pages", document.getElementById("max-pages").value || "150");
+  form.append("render_javascript", document.getElementById("render-javascript").checked ? "1" : "0");
+  return api("/api/inspect", { method: "POST", body: form })
+    .then((result) => {
+      setInspectMessage(result.message || "Artist website detected.", { ok: true });
+      document.getElementById("prepare-summary").textContent =
+        result.message || "Ready to crawl artist website.";
+    })
+    .catch((err) => {
+      setInspectMessage(
+        `${err.message} — you can still continue; prepare will validate the site.`,
+        { ok: false }
+      );
+    });
+}
+
 function inspectSelectedCsv() {
   if (!ingestFile) {
     setDetectedYear(null);
     return Promise.resolve();
   }
-  document.getElementById("csv-inspect-message").textContent = "Detecting year…";
+  setInspectMessage("Detecting year…", { ok: false });
   const form = new FormData();
+  form.append("source_id", "burning_man_csv");
   form.append("file", ingestFile, ingestFile.name);
-  return api("/api/inspect-csv", { method: "POST", body: form })
+  return api("/api/inspect", { method: "POST", body: form })
     .then((result) => {
       setDetectedYear(result.year, result.message || "", result.already_processed);
     })
@@ -455,27 +629,67 @@ function inspectSelectedCsv() {
 function runPrepare() {
   const status = document.getElementById("prepare-status");
   const btn = document.getElementById("run-prepare");
+  selectedSource = currentSourceId();
+
+  if (selectedSource === "artist_website") {
+    const artist = document.getElementById("artist-name").value.trim();
+    const url = document.getElementById("website-url").value.trim();
+    if (!artist || !url) {
+      status.textContent = "Enter artist name and website URL in step 1.";
+      return;
+    }
+    btn.disabled = true;
+    status.textContent = "Crawling artist website… this can take several minutes.";
+    renderProcessSteps([
+      { id: "inspect", label: "Inspect source", status: "done" },
+      { id: "crawl", label: "Crawl artist domain", status: "running" },
+      { id: "extract", label: "Extract projects", status: "pending" },
+      { id: "normalize", label: "Map to Artelier schema", status: "pending" },
+    ]);
+    const form = new FormData();
+    form.append("source_id", "artist_website");
+    form.append("artist_name", artist);
+    form.append("website_url", url);
+    form.append("portfolio_url", document.getElementById("portfolio-url").value.trim());
+    form.append("max_pages", document.getElementById("max-pages").value || "150");
+    form.append("render_javascript", document.getElementById("render-javascript").checked ? "1" : "0");
+    api("/api/prepare-run", { method: "POST", body: form })
+      .then((result) => {
+        if (!result.ok) throw new Error(result.error || "Prepare failed");
+        currentRunId = result.run_id;
+        renderProcessSteps(result.steps || []);
+        status.textContent = `Built ${result.project_count} projects for review.`;
+        updateDisk(result.disk);
+        return fetch(result.viewer_reload || viewUrlForRun(result.run_id))
+          .then((res) => res.json())
+          .then(setBundle)
+          .then(() => refreshHubStatus())
+          .then(() => showStep(3));
+      })
+      .catch((err) => {
+        renderProcessSteps([{ id: "error", label: err.message || "Prepare failed", status: "error" }]);
+        status.textContent = err.message || "Prepare failed";
+      })
+      .finally(() => {
+        updateContinueEnabled();
+      });
+    return;
+  }
+
   if (!ingestFile || !detectedYear) {
     status.textContent = "Choose a PlayaEvents ART CSV in step 1 first.";
     return;
   }
   if (alreadyProcessed && !document.getElementById("confirm-overwrite").checked) {
-    status.textContent = "Check “Yes, rebuild this year’s Aggregator outputs” before running again.";
-    renderProcessSteps([
-      { id: "year", label: `Year ${detectedYear}`, status: "done" },
-      { id: "overwrite", label: "Confirm rebuild of Aggregator outputs", status: "blocked" },
-    ]);
+    status.textContent = "Confirm rebuild before running again.";
     return;
   }
 
   btn.disabled = true;
-  status.textContent = "Matching History Archive… this can take several minutes.";
+  status.textContent = "Preparing Burning Man year… this can take several minutes.";
   renderProcessSteps([
-    { id: "www", label: "Using uploaded PlayaEvents file (disk library untouched)", status: "running" },
-    { id: "verify", label: "Matching History Archive for heroes & proof links", status: "pending" },
-    { id: "identity", label: document.getElementById("run-identity-online").checked
-      ? "Web search for unclear artist / Burner names"
-      : "Using local names only (no web search)", status: "pending" },
+    { id: "www", label: "Using uploaded PlayaEvents file", status: "running" },
+    { id: "verify", label: "Matching History Archive", status: "pending" },
     { id: "ingest", label: "Writing Artelier CSV + gallery preview", status: "pending" },
   ]);
 
@@ -495,17 +709,12 @@ function runPrepare() {
         return null;
       }
       if (!result.ok) throw new Error(result.error || "Prepare failed");
+      if (result.run_id) currentRunId = result.run_id;
       renderProcessSteps(result.steps || []);
-      status.textContent =
-        `Built ${result.project_count} projects` +
-        (result.checklist?.with_hero_image != null
-          ? ` · ${result.checklist.with_hero_image} with hero photos`
-          : "") +
-        (result.checklist?.upload_ready_count != null
-          ? ` · ${result.checklist.upload_ready_count} ready for Artelier.`
-          : ".");
+      status.textContent = `Built ${result.project_count} projects.`;
       updateDisk(result.disk);
-      return fetch(result.viewer_reload || DEFAULT_DATA_URL)
+      const reload = result.viewer_reload_run || result.viewer_reload || viewUrlForYear(result.year);
+      return fetch(reload)
         .then((res) => res.json())
         .then(setBundle)
         .then(() => refreshHubStatus())
@@ -516,7 +725,7 @@ function runPrepare() {
       status.textContent = err.message || "Prepare failed";
     })
     .finally(() => {
-      btn.disabled = !ingestFile || !detectedYear;
+      updateContinueEnabled();
     });
 }
 
@@ -525,6 +734,7 @@ function loadYearView(year) {
     renderGallery();
     return Promise.resolve(null);
   }
+  currentRunId = null;
   return fetch(viewUrlForYear(year))
     .then((res) => {
       if (!res.ok) throw new Error(`No preview for ${year}`);
@@ -537,10 +747,28 @@ function loadYearView(year) {
     });
 }
 
+function loadRunView(runId) {
+  currentRunId = runId;
+  return fetch(viewUrlForRun(runId))
+    .then((res) => {
+      if (!res.ok) throw new Error(`No preview for run ${runId}`);
+      return res.json();
+    })
+    .then((data) => {
+      setBundle(data);
+      showStep(3);
+      return data;
+    });
+}
+
 function loadDefault() {
-  // Prefer hub status latest_year; fall back to static cache if hub is offline.
   return refreshHubStatus()
     .then((status) => {
+      if (status?.latest_run_id) {
+        const yearSwitch = document.getElementById("year-switch");
+        if (yearSwitch) yearSwitch.value = `run:${status.latest_run_id}`;
+        return loadRunView(status.latest_run_id);
+      }
       const year = status?.latest_year;
       if (year) {
         const yearSwitch = document.getElementById("year-switch");
@@ -567,7 +795,7 @@ function refreshHubStatus() {
     .then((status) => {
       hubStatus = status;
       adminImportUrl = status.admin_import_url || "";
-      populateYears(status.years || []);
+      populateYears(status.years || [], status.runs || []);
       updateDisk(status.disk);
       document.getElementById("open-admin").disabled = !adminImportUrl;
       return status;
@@ -581,14 +809,37 @@ function refreshHubStatus() {
 document.querySelectorAll(".wizard-tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     const step = Number(tab.dataset.step);
-    if (step === 2 && (!ingestFile || !detectedYear) && !bundle) {
-      document.getElementById("csv-inspect-message").textContent = "Choose a PlayaEvents ART file in step 1 first.";
-      showStep(1);
-      return;
-    }
     showStep(step);
   });
 });
+
+document.querySelectorAll('input[name="source-id"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    syncSourceForm();
+    clearInactiveSourceStatus();
+    if (selectedSource === "artist_website") inspectArtistSource();
+    else if (ingestFile) inspectSelectedCsv();
+  });
+});
+
+document.getElementById("fill-clara-example")?.addEventListener("click", () => {
+  document.querySelector('input[name="source-id"][value="artist_website"]').checked = true;
+  syncSourceForm();
+  document.getElementById("artist-name").value = "Clara Berta";
+  document.getElementById("website-url").value = "https://claraberta.com/";
+  document.getElementById("portfolio-url").value = "";
+  document.getElementById("max-pages").value = "150";
+  inspectArtistSource();
+});
+
+["artist-name", "website-url"].forEach((id) => {
+  document.getElementById(id).addEventListener("input", updateContinueEnabled);
+});
+["artist-name", "website-url", "portfolio-url", "max-pages"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", inspectArtistSource);
+  document.getElementById(id).addEventListener("blur", inspectArtistSource);
+});
+document.getElementById("render-javascript").addEventListener("change", inspectArtistSource);
 
 document.getElementById("filters").addEventListener("click", (event) => {
   const button = event.target.closest("[data-filter]");
@@ -631,22 +882,23 @@ document.getElementById("download-upload").addEventListener("click", () => expor
 document.getElementById("download-core").addEventListener("click", () => exportFilteredCsv("core"));
 
 document.getElementById("run-validate").addEventListener("click", () => {
-  const year = Number(document.getElementById("year-switch").value || detectedYear || bundle?.meta?.year);
+  const year = Number(document.getElementById("year-switch").value || detectedYear || bundle?.meta?.year || 0);
+  const runId = currentRunId || bundle?.meta?.run_id || "";
   const log = document.getElementById("validate-log");
   log.textContent = "Validating…";
   api("/api/validate-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ year }),
+    body: JSON.stringify({ year: Number.isFinite(year) ? year : 0, run_id: runId }),
   })
     .then((result) => {
       if (result.ok) {
-        log.textContent = `OK — ${result.row_count} upload-ready rows.`;
-        document.getElementById("run-deploy").disabled = false;
+        log.textContent = `OK — ${result.row_count} export-ready rows.`;
         document.getElementById("download-upload").disabled = false;
       } else {
         log.textContent = `Failed — ${result.error_count} issue(s).`;
       }
+      showStep(4);
     })
     .catch((err) => {
       log.textContent = err.message;
@@ -656,6 +908,10 @@ document.getElementById("run-validate").addEventListener("click", () => {
 document.getElementById("run-deploy").addEventListener("click", () => {
   const year = Number(document.getElementById("year-switch").value || detectedYear || bundle?.meta?.year);
   const status = document.getElementById("deploy-status");
+  if (!year || String(year).startsWith("run:")) {
+    status.textContent = "Deploy package is currently available for Burning Man year runs.";
+    return;
+  }
   status.textContent = "Preparing package…";
   api("/api/prepare-deploy", {
     method: "POST",
@@ -671,8 +927,6 @@ document.getElementById("run-deploy").addEventListener("click", () => {
         return;
       }
       status.textContent = result.message || "Package ready.";
-      document.getElementById("download-upload").disabled = false;
-      document.getElementById("download-core").disabled = false;
       adminImportUrl = result.admin_import_url || adminImportUrl;
       document.getElementById("open-admin").disabled = !adminImportUrl || result.forced;
     })
@@ -686,7 +940,14 @@ document.getElementById("open-admin").addEventListener("click", () => {
 });
 
 document.getElementById("switch-year").addEventListener("click", () => {
-  const year = Number(document.getElementById("year-switch").value);
+  const value = document.getElementById("year-switch").value;
+  if (value.startsWith("run:")) {
+    loadRunView(value.slice(4)).catch((err) => {
+      document.getElementById("cleanup-status").textContent = err.message;
+    });
+    return;
+  }
+  const year = Number(value);
   api("/api/load-year", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -729,6 +990,6 @@ document.getElementById("file-input").addEventListener("change", (event) => {
   reader.readAsText(file);
 });
 
+syncSourceForm();
 showStep(1);
 loadDefault();
-// refreshHubStatus runs inside loadDefault so the latest prepared year auto-opens.

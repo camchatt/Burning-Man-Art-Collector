@@ -14,7 +14,7 @@ from burning_man_scraper.aggregator_hub.services import cleanup_temps, disk_foot
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Burning Man Aggregator hub (preview + ingest + deploy).")
+    parser = argparse.ArgumentParser(description="Artelier Aggregator hub (source → prepare → review → export).")
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--cleanup", action="store_true", help="Clean temp uploads and old preview HTML, then exit.")

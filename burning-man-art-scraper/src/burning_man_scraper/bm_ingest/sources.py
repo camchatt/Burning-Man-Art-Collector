@@ -165,6 +165,66 @@ def default_www_dir(project_root: Path) -> Path:
     return project_root.parent / "What When Where Files"
 
 
+def default_coordinate_data_dir(project_root: Path) -> Path:
+    return default_www_dir(project_root) / "Coordinate Data"
+
+
+def resolve_gis_coordinate_path(project_root: Path, year: int) -> Path | None:
+    """Prefer GIS-{year}.json, then art_{year}.json under Coordinate Data."""
+    base = default_coordinate_data_dir(project_root)
+    candidates = [
+        base / f"GIS-{year}.json",
+        base / f"art_{year}.json",
+        base / f"GIS_{year}.json",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
+def load_gis_coordinates_by_key(path: Path | None) -> dict[str, dict]:
+    """Index official GIS / art JSON by uid and title for playa GPS merge."""
+    if path is None or not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    items = payload if isinstance(payload, list) else payload.get("records", payload.get("items", []))
+    by_key: dict[str, dict] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        uid = str(item.get("uid") or "").strip()
+        title = normalize_title(item.get("name") or item.get("title") or "")
+        year = str(item.get("year") or "").strip()
+        location = item.get("location") if isinstance(item.get("location"), dict) else {}
+        lat = location.get("gps_latitude", location.get("latitude", item.get("gps_latitude")))
+        lng = location.get("gps_longitude", location.get("longitude", item.get("gps_longitude")))
+        location_string = (
+            (item.get("location_string") or "").strip()
+            or (location.get("string") or "").strip()
+            or ""
+        )
+        entry = {
+            "uid": uid,
+            "name": item.get("name") or item.get("title") or "",
+            "year": year,
+            "gps_latitude": lat,
+            "gps_longitude": lng,
+            "location_string": location_string,
+            "hour": location.get("hour"),
+            "minute": location.get("minute"),
+            "distance": location.get("distance"),
+            "category": location.get("category") or item.get("category"),
+            "source_path": str(path),
+        }
+        if uid:
+            by_key[f"uid:{uid}"] = entry
+        if title:
+            by_key.setdefault(f"title:{year}:{title}", entry)
+            by_key.setdefault(f"title:{title}", entry)
+    return by_key
+
+
 def aggregator_previews_dir(project_root: Path) -> Path:
     """Derived Aggregator gallery previews live next to WWW templates (not mixed into ART CSVs)."""
     return default_www_dir(project_root) / "aggregator_previews"
@@ -203,6 +263,7 @@ def cache_inventory(project_root: Path, year: int) -> dict[str, bool]:
         "archive_index": (verification_dir / f"archive_index_{year}.json").exists(),
         "image_manifest": (verification_dir / f"image_manifest_{year}.json").exists(),
         "collector_export": default_export_path(project_root, year).exists(),
+        "gis_coordinates": resolve_gis_coordinate_path(project_root, year) is not None,
     }
 
 
@@ -222,6 +283,7 @@ def load_year_sources(
         verification_dir / f"identity_report_{year}.csv",
         verification_dir / f"identity_report_{year}.json",
     )
+    gis_path = resolve_gis_coordinate_path(project_root, year)
     return {
         "www": www,
         "verification": load_verification_by_key(verification_dir / f"verification_report_{year}.csv"),
@@ -229,6 +291,8 @@ def load_year_sources(
         "archive": load_archive_by_key(verification_dir / f"archive_index_{year}.json"),
         "images": load_image_manifest_by_key(verification_dir / f"image_manifest_{year}.json"),
         "collector": load_collector_exports(default_export_path(project_root, year)),
+        "gis": load_gis_coordinates_by_key(gis_path),
+        "gis_path": gis_path,
         "verification_dir": verification_dir,
         "cache_inventory": cache_inventory(project_root, year),
     }

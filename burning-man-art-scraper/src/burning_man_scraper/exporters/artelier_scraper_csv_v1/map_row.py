@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from burning_man_scraper.exporters.artelier_scraper_csv_v1.contract import (
     ARTELIER_SCRAPER_CSV_V1,
@@ -11,6 +11,7 @@ from burning_man_scraper.exporters.artelier_scraper_csv_v1.contract import (
     SOURCE_NAME,
     SOURCE_NAMESPACE,
 )
+from burning_man_scraper.url_utils import encode_http_url
 
 
 _LITERAL_NULL = re.compile(r"^(none|null|undefined|nan|-)$", re.IGNORECASE)
@@ -32,12 +33,12 @@ def http_url(value: Any) -> str:
     if not re.match(r"^https?://", text, re.IGNORECASE):
         return ""
     try:
-        parsed = urlparse(text)
+        parsed = urlsplit(text)
     except ValueError:
         return ""
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
         return ""
-    return text
+    return encode_http_url(text)
 
 
 def pipe_join(*parts: str) -> str:

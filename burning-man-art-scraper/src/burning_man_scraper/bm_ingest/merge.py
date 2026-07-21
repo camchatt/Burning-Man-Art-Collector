@@ -19,6 +19,7 @@ from burning_man_scraper.bm_ingest.sources import (
     lookup_identity,
 )
 from burning_man_scraper.bm_ingest.writer import write_ingest_outputs
+from burning_man_scraper.url_utils import encode_http_url
 from burning_man_scraper.verification.models import WwwReferenceRecord
 from burning_man_scraper.verification.www_loader import assert_art_csv_matches_year
 
@@ -65,6 +66,7 @@ def build_ingest_rows(
         "network_requests_attempted": 0 if not fetch_missing_heroes else None,
         "processing_mode": "fast_upload" if not fetch_missing_heroes else "fast_upload+optional_hero_fetch",
         "cache_inventory": sources.get("cache_inventory") or {},
+        "gis_coordinate_matches": 0,
     }
     seen_uids: set[str] = set()
 
@@ -80,6 +82,7 @@ def build_ingest_rows(
         identity, identity_mode = lookup_identity(
             sources["identity"], uid=uid, year=year, title=record.title
         )
+        gis = lookup(sources.get("gis") or {}, uid=uid, year=year, title=record.title)
 
         if verification:
             provenance.append("verification")
@@ -92,6 +95,9 @@ def build_ingest_rows(
             provenance.append("image_manifest")
         if collector:
             provenance.append("collector_export")
+        if gis:
+            provenance.append("gis_coordinates")
+            stats["gis_coordinate_matches"] += 1
 
         if uid:
             stats["uid_matches"] += 1
@@ -206,11 +212,11 @@ def build_ingest_rows(
                 "project_year": str(year),
                 "project_location": hometown or "",
                 "project_summary": summary or "",
-                "hero_image_url": hero.hero_image_url,
+                "hero_image_url": encode_http_url(hero.hero_image_url) if hero.hero_image_url else "",
                 "contributor_name": display_name,
                 "contributor_slug": slugify(display_name) if display_name else "",
                 "role_title": "Artist",
-                "contributor_website": website or "",
+                "contributor_website": encode_http_url(website) if website else "",
                 "collaboration_status": "Collective project"
                 if contributor.contributor_kind in {"collective", "studio", "organization", "theme_camp", "multiple"}
                 else "",
@@ -221,10 +227,23 @@ def build_ingest_rows(
                 or "documented",
                 "proof_title": record.title,
                 "proof_type": "Installation detail page",
-                "proof_external_url": proof_url or "",
+                "proof_external_url": encode_http_url(proof_url) if proof_url else "",
                 "proof_description": summary or "",
             }
         )
+
+        playa_address = record.playa_address or ""
+        playa_latitude = ""
+        playa_longitude = ""
+        if gis:
+            lat = gis.get("gps_latitude")
+            lng = gis.get("gps_longitude")
+            if lat is not None and lng is not None and str(lat).strip() != "" and str(lng).strip() != "":
+                playa_latitude = str(lat)
+                playa_longitude = str(lng)
+            gis_address = (gis.get("location_string") or "").strip()
+            if gis_address:
+                playa_address = gis_address
 
         extensions = {header: "" for header in BM_EXTENSION_HEADERS}
         extensions.update(
@@ -232,9 +251,9 @@ def build_ingest_rows(
                 "bm_uid": uid or "",
                 "bm_year": str(year),
                 "bm_event_name": "Burning Man",
-                "playa_address": record.playa_address or "",
-                "playa_latitude": "",
-                "playa_longitude": "",
+                "playa_address": playa_address,
+                "playa_latitude": playa_latitude,
+                "playa_longitude": playa_longitude,
                 "honorarium_status": honorarium or "",
                 "theme_camp": record.theme_camp or "",
                 "installation_type": record.installation_type or "",
@@ -246,8 +265,10 @@ def build_ingest_rows(
                 "contributor_last_name": contributor.contributor_last_name,
                 "playa_name": contributor.playa_name,
                 "playa_name_confidence": contributor.playa_name_confidence,
-                "bm_hero_image_source_url": hero.hero_image_url,
-                "hero_image_source_page": hero.hero_image_source_page,
+                "bm_hero_image_source_url": encode_http_url(hero.hero_image_url) if hero.hero_image_url else "",
+                "hero_image_source_page": (
+                    encode_http_url(hero.hero_image_source_page) if hero.hero_image_source_page else ""
+                ),
                 "hero_image_attribution": hero.hero_image_attribution,
                 "hero_image_confidence": hero.hero_image_confidence,
                 "review_flags": _format_flags(flags),

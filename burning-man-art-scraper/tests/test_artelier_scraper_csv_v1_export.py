@@ -135,6 +135,23 @@ class ArtelierScraperCsvV1ExportTests(unittest.TestCase):
         self.assertEqual(row["image_urls"], "https://example.org/a.jpg")
         self.assertEqual(row["materials"], "steel|LED")
 
+    def test_image_url_with_spaces_is_percent_encoded(self):
+        dirty = (
+            "https://cdn.example/img/burningman/ag0kgshcsw/640px/"
+            "a2Id0000001IR0aEAG Makhalych (aka Birding Man) Image 2.jpeg?u=r3rtjx"
+        )
+        row = map_bm_upload_row(_base_src(hero_image_url=dirty, bm_hero_image_source_url=dirty))
+        self.assertNotIn(" ", row["image_urls"])
+        self.assertIn("%20", row["image_urls"])
+        self.assertEqual(row["image_urls"], row["bm_hero_image_source_url"])
+        # Idempotent: already-encoded URLs stay valid.
+        again = map_bm_upload_row(
+            _base_src(hero_image_url=row["image_urls"], bm_hero_image_source_url=row["image_urls"])
+        )
+        self.assertEqual(again["image_urls"], row["image_urls"])
+        errors, _ = validate_export_row(row)
+        self.assertEqual(errors, [])
+
     def test_export_writes_run_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

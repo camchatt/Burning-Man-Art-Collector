@@ -1,0 +1,11 @@
+{
+  "name": "burning-man-art-collector",
+  "private": true,
+  "description": "Artelier Aggregator hub for Burning Man Art Collector",
+  "scripts": {
+    "dev": "py burning-man-art-scraper/run_aggregator_hub.py",
+    "start": "py burning-man-art-scraper/run_aggregator_hub.py",
+    "hub": "py burning-man-art-scraper/run_aggregator_hub.py",
+    "test:aggregator": "py -m unittest discover -s burning-man-art-scraper/tests -p \"test_artelier_aggregator.py\" -v"
+  }
+}

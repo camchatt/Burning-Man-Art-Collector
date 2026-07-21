@@ -16,6 +16,10 @@ FLAG_LABELS = {
     "hero_needs_review": "Hero needs review",
     "missing_archive_cache": "Missing archive cache",
     "honorarium_unknown": "Honorarium unknown",
+    "sparse_evidence": "Sparse or uncertain evidence",
+    "low_confidence": "Low confidence fields",
+    "missing_attribution": "Missing attribution",
+    "incomplete_fields": "Incomplete required fields",
 }
 
 # Flags that mean "look before upload" (exclude honorarium-only noise).
@@ -28,6 +32,10 @@ ATTENTION_FLAGS = {
     "hero_missing",
     "hero_needs_review",
     "missing_archive_cache",
+    "sparse_evidence",
+    "low_confidence",
+    "missing_attribution",
+    "incomplete_fields",
 }
 
 

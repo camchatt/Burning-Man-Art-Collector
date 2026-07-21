@@ -60,6 +60,44 @@ class ImageAttributionTests(unittest.TestCase):
         attribution = infer_attribution("https://lh3.googleusercontent.com/pw/example")
         self.assertTrue(attribution["review_required"])
 
+    def test_validate_encodes_spaces_instead_of_raising(self):
+        from unittest import mock
+
+        from burning_man_scraper.verification.image_validator import ImageValidator
+
+        dirty = (
+            "https://cdn.example/img/burningman/ag0kgshcsw/640px/"
+            "a2Id0000001IR0aEAG Makhalych (aka Birding Man) Image 2.jpeg?u=r3rtjx"
+        )
+        validator = ImageValidator(user_agent="test", delay_seconds=0)
+
+        class FakeResponse:
+            status = 200
+
+            def geturl(self):
+                return dirty.replace(" ", "%20")
+
+            @property
+            def headers(self):
+                return {"Content-Type": "image/jpeg", "Content-Length": "10000"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with mock.patch(
+            "burning_man_scraper.verification.image_validator.urlopen",
+            return_value=FakeResponse(),
+        ) as mocked:
+            asset = validator.validate(dirty)
+            requested = mocked.call_args[0][0].full_url
+            self.assertNotIn(" ", requested)
+            self.assertIn("%20", requested)
+            self.assertEqual(asset.image_url, requested)
+            self.assertTrue(asset.link_active)
+
 
 class WwwLoaderTests(unittest.TestCase):
     def test_load_2022_www_records(self):

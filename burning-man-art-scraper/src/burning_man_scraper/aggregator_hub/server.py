@@ -23,6 +23,16 @@ from burning_man_scraper.bm_ingest.merge import run_ingest
 from burning_man_scraper.bm_ingest.sources import cache_inventory
 from burning_man_scraper.bm_ingest.view_bundle import list_prepared_years, resolve_preview_path
 from burning_man_scraper.config import load_config
+from burning_man_scraper.sources.registry import get_adapter, list_sources
+from burning_man_scraper.sources.run_store import (
+    apply_record_corrections,
+    list_runs,
+    load_manifest,
+    load_normalized_records,
+    resolve_run_csv,
+    resolve_run_view,
+    run_dir,
+)
 from burning_man_scraper.verification.www_loader import (
     ArtCsvYearMismatchError,
     assert_art_csv_matches_year,
@@ -47,15 +57,73 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/status":
             self._json(self._status_payload())
             return
+        if parsed.path == "/api/sources":
+            self._json(
+                {
+                    "ok": True,
+                    "sources": [
+                        {
+                            "id": source.id,
+                            "label": source.label,
+                            "description": source.description,
+                            "input_kind": source.input_kind,
+                            "fields": source.fields,
+                        }
+                        for source in list_sources()
+                    ],
+                }
+            )
+            return
         if parsed.path == "/api/years":
             self._json({"years": self._list_years()})
             return
+        if parsed.path == "/api/runs":
+            self._json({"ok": True, "runs": list_runs(self.project_root)})
+            return
+        if parsed.path == "/api/run-progress":
+            qs = parse_qs(parsed.query)
+            run_id = (qs.get("run_id") or [""])[0]
+            if not run_id:
+                self._json({"ok": False, "error": "run_id is required"}, status=400)
+                return
+            path = run_dir(self.project_root, run_id)
+            if not (path / "run_manifest.json").exists():
+                self._json({"ok": False, "error": f"Unknown run {run_id}"}, status=404)
+                return
+            manifest = load_manifest(path)
+            self._json(
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "status": manifest.get("status"),
+                    "progress": manifest.get("progress") or {},
+                    "summary": manifest.get("summary") or {},
+                }
+            )
+            return
+        if parsed.path == "/api/records":
+            qs = parse_qs(parsed.query)
+            run_id = (qs.get("run_id") or [""])[0]
+            if not run_id:
+                self._json({"ok": False, "error": "run_id is required"}, status=400)
+                return
+            path = run_dir(self.project_root, run_id)
+            if not path.exists():
+                self._json({"ok": False, "error": f"Unknown run {run_id}"}, status=404)
+                return
+            self._json({"ok": True, "run_id": run_id, "records": load_normalized_records(path)})
+            return
         if parsed.path == "/api/view":
             qs = parse_qs(parsed.query)
+            run_id = (qs.get("run_id") or [""])[0]
             year = int((qs.get("year") or ["0"])[0])
-            path = resolve_preview_path(self.project_root, year) if year else None
+            path = None
+            if run_id:
+                path = resolve_run_view(self.project_root, run_id)
+            elif year:
+                path = resolve_preview_path(self.project_root, year)
             if path is None:
-                self._json({"ok": False, "error": f"No aggregator view for {year}"}, status=404)
+                self._json({"ok": False, "error": f"No aggregator view for {run_id or year}"}, status=404)
                 return
             data = path.read_bytes()
             self.send_response(200)
@@ -67,9 +135,13 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path in {"/api/download-upload", "/api/download-core"}:
             qs = parse_qs(parsed.query)
+            run_id = (qs.get("run_id") or [""])[0]
             year = int((qs.get("year") or ["0"])[0])
             kind = "upload" if parsed.path == "/api/download-upload" else "core"
-            path = resolve_ingest_csv(self.project_root, year, kind=kind)
+            if run_id:
+                path = resolve_run_csv(self.project_root, run_id)
+            else:
+                path = resolve_ingest_csv(self.project_root, year, kind=kind)
             if path is None:
                 self._json({"ok": False, "error": "CSV not found"}, status=404)
                 return
@@ -82,8 +154,8 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         try:
-            if parsed.path == "/api/prepare":
-                payload = self._handle_prepare()
+            if parsed.path in {"/api/prepare", "/api/prepare-run"}:
+                payload = self._handle_prepare_unified() if parsed.path == "/api/prepare-run" else self._handle_prepare()
                 status = 409 if payload.get("needs_confirm") else 200
                 self._json(payload, status=status)
                 return
@@ -92,8 +164,11 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
                 status = 409 if payload.get("needs_confirm") else 200
                 self._json(payload, status=status)
                 return
-            if parsed.path == "/api/inspect-csv":
-                self._json(self._handle_inspect_csv())
+            if parsed.path in {"/api/inspect-csv", "/api/inspect"}:
+                if parsed.path == "/api/inspect":
+                    self._json(self._handle_inspect_unified())
+                else:
+                    self._json(self._handle_inspect_csv())
                 return
             if parsed.path == "/api/validate-upload":
                 self._json(self._handle_validate())
@@ -113,6 +188,9 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/load-year":
                 self._json(self._handle_load_year())
                 return
+            if parsed.path == "/api/records/update":
+                self._json(self._handle_record_update())
+                return
             if parsed.path == "/api/export-csv":
                 self._handle_export_csv()
                 return
@@ -131,21 +209,34 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
         deploy_cfg = load_deploy_config(self.project_root)
         years = self._list_years()
         latest = years[0] if years else None
+        runs = list_runs(self.project_root)
         summary = None
         if latest is not None:
             summary_path = self.project_root / "data" / "bm_ingest" / str(latest) / f"ingest_summary_{latest}.json"
             if summary_path.exists():
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        latest_run = runs[0] if runs else None
         return {
             "ok": True,
+            "app_name": "Artelier Aggregator",
             "years": years,
+            "runs": runs,
             "latest_year": latest,
+            "latest_run_id": (latest_run or {}).get("run_id"),
             "latest_summary": summary,
             "year_summaries": self._year_summaries(years),
             "disk": disk_footprint(self.project_root),
             "admin_import_url": deploy_cfg.get("admin_import_url") or "",
             "viewer_data": f"/api/view?year={latest}" if latest else "",
-            "latest_view_url": f"/api/view?year={latest}" if latest else "",
+            "latest_view_url": (
+                f"/api/view?run_id={latest_run['run_id']}"
+                if latest_run
+                else (f"/api/view?year={latest}" if latest else "")
+            ),
+            "sources": [
+                {"id": source.id, "label": source.label, "description": source.description}
+                for source in list_sources()
+            ],
         }
 
     def _year_summaries(self, years: list[int]) -> dict[str, dict]:
@@ -217,6 +308,102 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
         art_path = job_dir / safe_name
         art_path.write_bytes(upload.content)
         return job_dir, art_path, original_name
+
+    def _handle_inspect_unified(self) -> dict:
+        fields, files = self._parse_upload()
+        source_id = (fields.get("source_id") or fields.get("source") or "").strip()
+        if not source_id:
+            # Infer from payload shape.
+            if files.get("file") or files.get("art_csv"):
+                source_id = "burning_man_csv"
+            elif fields.get("website_url") or fields.get("url"):
+                source_id = "artist_website"
+            else:
+                raise ValueError("source_id is required")
+        adapter = get_adapter(source_id)
+        if source_id == "burning_man_csv":
+            upload = files.get("file") or files.get("art_csv")
+            if upload is None or not getattr(upload, "content", b""):
+                raise ValueError("ART CSV file is required")
+            job_dir, art_path, original_name = self._write_upload(upload)
+            try:
+                result = adapter.inspect(
+                    art_path=art_path,
+                    original_filename=original_name,
+                    project_root=self.project_root,
+                )
+                payload = result.to_dict()
+                year = int((result.summary or {}).get("year") or 0)
+                existing = self._existing_year_payload(year) if year else None
+                payload["already_processed"] = existing is not None
+                payload["existing"] = existing
+                payload["year"] = year
+                payload["rows"] = (result.summary or {}).get("rows")
+                payload["filename"] = original_name
+                payload["detected_source"] = result.detected_label
+                payload["processing_mode"] = "fast_upload"
+                return payload
+            finally:
+                shutil.rmtree(job_dir, ignore_errors=True)
+        result = adapter.inspect(
+            artist_name=fields.get("artist_name") or fields.get("artist") or "",
+            website_url=fields.get("website_url") or fields.get("url") or "",
+            portfolio_url=fields.get("portfolio_url") or fields.get("project_index") or "",
+            max_pages=int(fields.get("max_pages") or 150),
+            render_javascript=fields.get("render_javascript", "") in {"1", "true", "True", "yes"},
+        )
+        if not result.ok:
+            raise ValueError(result.error or "Inspection failed")
+        payload = result.to_dict()
+        payload["detected_source"] = result.detected_label
+        return payload
+
+    def _handle_prepare_unified(self) -> dict:
+        fields, files = self._parse_upload()
+        source_id = (fields.get("source_id") or fields.get("source") or "").strip()
+        if not source_id:
+            if files.get("file") or files.get("art_csv"):
+                source_id = "burning_man_csv"
+            else:
+                source_id = "artist_website"
+        adapter = get_adapter(source_id)
+        if source_id == "burning_man_csv":
+            # Reuse legacy prepare path for full verify/identity/ingest behavior.
+            return self._handle_prepare()
+        result = adapter.prepare(
+            project_root=self.project_root,
+            artist_name=fields.get("artist_name") or fields.get("artist") or "",
+            website_url=fields.get("website_url") or fields.get("url") or "",
+            portfolio_url=fields.get("portfolio_url") or fields.get("project_index") or "",
+            max_pages=int(fields.get("max_pages") or 150),
+            delay=float(fields.get("delay") or 1.0),
+            timeout=int(fields.get("timeout") or 20),
+            render_javascript=fields.get("render_javascript", "") in {"1", "true", "True", "yes"},
+        )
+        result["disk"] = disk_footprint(self.project_root)
+        return result
+
+    def _handle_record_update(self) -> dict:
+        body = json.loads(self._read_body().decode("utf-8") or "{}")
+        run_id = str(body.get("run_id") or "")
+        record_id = str(body.get("record_id") or "")
+        corrections = body.get("corrections") or {}
+        if not run_id or not record_id:
+            raise ValueError("run_id and record_id are required")
+        if not isinstance(corrections, dict):
+            raise ValueError("corrections must be an object")
+        updated = apply_record_corrections(
+            self.project_root,
+            run_id,
+            record_id=record_id,
+            corrections=corrections,
+        )
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "record": updated,
+            "viewer_reload": f"/api/view?run_id={run_id}",
+        }
 
     def _handle_inspect_csv(self) -> dict:
         fields, files = self._parse_upload()
@@ -411,7 +598,13 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
     def _handle_validate(self) -> dict:
         body = json.loads(self._read_body().decode("utf-8") or "{}")
         year = int(body.get("year") or 0)
-        result = validate_core_csv(self.project_root, year, upload_ready_only=True)
+        run_id = str(body.get("run_id") or "")
+        result = validate_core_csv(
+            self.project_root,
+            year,
+            run_id=run_id,
+            upload_ready_only=True,
+        )
         result["ok_flag"] = result["ok"]
         return result
 
@@ -444,8 +637,9 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
     def _handle_export_csv(self) -> None:
         body = json.loads(self._read_body().decode("utf-8") or "{}")
         year = int(body.get("year") or 0)
-        if not year:
-            raise ValueError("year is required")
+        run_id = str(body.get("run_id") or "")
+        if not year and not run_id:
+            raise ValueError("year or run_id is required")
         kind = str(body.get("kind") or "upload")
         if kind not in {"upload", "core"}:
             raise ValueError("kind must be 'upload' or 'core'")
@@ -455,8 +649,9 @@ class AggregatorHubHandler(SimpleHTTPRequestHandler):
         result = export_filtered_csv(
             self.project_root,
             year=year,
+            run_id=run_id,
             keys=[str(key) for key in keys],
-            kind=kind,
+            kind="core" if run_id else kind,
             filter_id=str(body.get("filter_id") or "all"),
             filter_label=str(body.get("filter_label") or "All projects"),
             unfiltered=bool(body.get("unfiltered")),

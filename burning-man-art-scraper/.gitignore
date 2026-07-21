@@ -41,6 +41,7 @@ data/verification/
 data/uploads/
 data/deploy/
 data/bm_ingest/
+data/runs/
 viewer/aggregator/data/
 *.zip
 outputs.zip.local

@@ -1,6 +1,6 @@
-# Aggregator Hub — how to use it
+# Artelier Aggregator — how to use it
 
-Three steps. That’s the whole product surface.
+Source → Prepare → Review → Export. One workflow for artist websites and Burning Man CSVs.
 
 ## 1. Start the hub
 
@@ -10,38 +10,44 @@ py run_aggregator_hub.py
 
 Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/)
 
-If years are already prepared, the **latest year auto-loads** into the gallery. Use **Open year** only when switching years.
-
 ## 2. Wizard
 
-### Upload
-Choose a PlayaEvents ART CSV (`Title`, `Description`, `Link`, `UID`, …). Do **not** upload an Artelier / Aggregator export (`project_title`, `bm_uid`, …).
+### Source
+Pick **Artist website** (default) or **Burning Man CSV**.
 
-The year is detected automatically. The upload is used for this prepare run only; **PlayaEvents ART templates under What When Where Files are never overwritten.**
+- Artist website: enter artist name + URL (for example Clara Berta / https://claraberta.com/). Continue as soon as both are filled; optional inspect is advisory only. Optional portfolio URL, crawl limit, and Playwright rendering.
+- Burning Man CSV: upload a PlayaEvents ART file (`Title`, `Description`, `Link`, `UID`). Do **not** upload an Artelier export.
+
+Optional inspection can confirm what was detected; it does not block starting an artist crawl.
 
 ### Prepare
-One button runs:
+Builds shared normalized review records, writes an immutable run folder under `data/runs/`, and opens the gallery. Burning Man years still also write `data/bm_ingest/<year>/` as before.
 
-1. Use the uploaded template (ART library untouched)
-2. Archive verification (heroes + proof links — uses network)
-3. Optional: online identity checks (names / Burner names — can be slow; limited batch)
-4. Build the gallery preview + Artelier CSV
+### Review
+Filter for export-ready, low confidence, missing images, missing attribution, duplicates, or incomplete fields. Open a card to edit core fields and see source evidence. Blocked records show why they cannot export yet.
 
-If the year already has Aggregator outputs, confirm overwrite first (outputs only — not WWW ART templates).
+### Export
+Download the currently filtered Artelier CSV using the authoritative **36-column** schema. Validate export-ready rows first when you want a strict check.
 
-### Review & download
-Use the gallery filters (Needs review, Has hero photo, etc.) or search. **Download Artelier CSV** exports only the projects currently shown; the filename includes the filter name when narrowed.
+## API surface (source-neutral)
 
-Advanced bits (core slice, validate, cleanup, admin URL) live under **More options**.
+| Endpoint | Role |
+|----------|------|
+| `GET /api/sources` | List adapters |
+| `POST /api/inspect` | Inspect file or artist URL |
+| `POST /api/prepare-run` | Start preparation |
+| `GET /api/run-progress?run_id=` | Progress / status |
+| `GET /api/records?run_id=` | Normalized review records |
+| `POST /api/records/update` | Save corrections |
+| `POST /api/validate-upload` | Validate (year or run_id) |
+| `POST /api/export-csv` | Download filtered Artelier CSV |
+
+Legacy Burning Man routes (`/api/inspect-csv`, `/api/prepare`, year downloads) remain as compatibility wrappers.
 
 ## Where files live
 
-| File | Use |
+| Path | Use |
 |------|-----|
-| `What When Where Files/PlayaEvents-<year>_ART.csv` | Source year template |
-| `What When Where Files/aggregator_previews/aggregator_view_<year>.json` | Gallery preview (auto-loaded by the portal) |
-| `data/bm_ingest/<year>/artelier_bm_upload_<year>.csv` | Primary Artelier/BM download |
-| `data/bm_ingest/<year>/aggregator_view_<year>.json` | Backup of the same preview |
-| `data/verification/<year>/` | Verification + identity caches from Prepare |
-
-Gallery JSON is derived (not a replacement for the ART template). Keep ART CSVs and previews in separate WWW subfolders so source vs processed stays clear.
+| `data/runs/<run_id>/` | Immutable artist (and mirrored BM) run folders |
+| `data/bm_ingest/<year>/` | Burning Man year outputs (unchanged) |
+| `config/artelier_import_schema.yaml` | Authoritative 36-column export contract |
